@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Startet die lokale Voice-UI und öffnet sie im Browser.
+#   claude-voice-ui [--port N] [--no-open]
+set -uo pipefail
+PORT="${VOICE_UI_PORT:-7331}"
+OPEN=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --port) PORT="$2"; shift 2 ;;
+    --no-open) OPEN=0; shift ;;
+    -h|--help) echo "claude-voice-ui [--port N] [--no-open]"; exit 0 ;;
+    *) echo "unbekannt: $1" >&2; exit 1 ;;
+  esac
+done
+
+# Der Vorlese-Hook muss schweigen — die UI spricht selbst.
+LOCK="$HOME/.claude/voice-loop.lock"
+: > "$LOCK"
+cleanup() { rm -f "$LOCK"; pkill -x say 2>/dev/null; }
+trap cleanup EXIT INT TERM
+
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port $PORT ist belegt. Anderen wählen: claude-voice-ui --port 7332" >&2
+  exit 1
+fi
+
+VOICE_UI_PORT="$PORT" node "$HOME/.claude/voice-ui/server.mjs" &
+SRV=$!
+
+for _ in $(seq 1 40); do
+  curl -sf "http://127.0.0.1:$PORT/api/config" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+[ "$OPEN" = 1 ] && open "http://127.0.0.1:$PORT"
+echo "Läuft auf http://127.0.0.1:$PORT — Ctrl-C beendet."
+wait $SRV

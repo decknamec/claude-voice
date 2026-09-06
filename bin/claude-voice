@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Freisprech-Loop für Claude Code: Mikro -> whisper.cpp (lokal) -> claude -p -> say.
+#
+#   claude-voice              neue Session im aktuellen Verzeichnis
+#   claude-voice --last       letzte Voice-Session fortsetzen
+#   claude-voice --yolo       Tools ohne Rückfrage erlauben (bypassPermissions)
+#
+# Aufhören: "stopp" / "ende" sagen, oder Ctrl-C.
+set -uo pipefail
+
+MODEL="$HOME/.claude/whisper-models/ggml-large-v3-turbo-q5_0.bin"
+WHISPER_LANG=de
+VOICE=Anna
+RATE=190
+MAX_CHARS=900          # längere Antworten als beim Hook — hier ist Vorlesen der Zweck
+SILENCE_SEC=1.6        # so lange Stille beendet die Aufnahme
+SILENCE_THRESH=2%      # Pegel, ab dem es als Sprache zählt
+MAX_REC=90             # harte Obergrenze pro Aufnahme (Sekunden)
+MIN_DUR=0.4            # kürzere Aufnahmen sind Husten, kein Satz
+PERMISSION_MODE=acceptEdits
+CLAUDE_MODEL=""          # leer = dein Default (opus[1m]). Für spürbar weniger
+                         # Wartezeit: CLAUDE_MODEL=claude-sonnet-5
+# Ohne das antwortet Claude in Markdown mit Codeblöcken — die filtert speakable_text
+# zwar raus, aber übrig bleibt Stückwerk. Besser gleich sprechbar antworten lassen.
+VOICE_SYSTEM_PROMPT="Deine Antwort wird per Sprachausgabe vorgelesen. Antworte auf Deutsch, in höchstens drei bis vier Sätzen, in ganzen Sätzen ohne Markdown, ohne Codeblöcke, ohne Aufzählungen. Lies keine Dateipfade oder URLs vor, beschreibe sie stattdessen. Wenn die Antwort zwingend Code braucht, sag nur, was du geändert hast und wo."
+# Whisper auf Fachvokabular vorspannen — ohne das wird aus "Stop Hook" gern
+# "Stopthook". In ~/.claude/voice-loop.conf überschreibbar.
+VOCAB="Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, Vercel, TypeScript, Deploy, Terminal, Debugging, Refactoring, Prompt, Skill, Subagent, Transcript."
+# shellcheck disable=SC1090
+[ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
+[ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
+
+source "$HOME/.claude/hooks/lib/speakable.sh"
+
+LOCK="$HOME/.claude/voice-loop.lock"
+SESSION_FILE="$HOME/.claude/voice-loop-session"
+WORK=$(mktemp -d)
+WAV="$WORK/in.wav"
+
+resume=false
+for a in "$@"; do
+  case "$a" in
+    --last) resume=true ;;
+    --yolo) PERMISSION_MODE=bypassPermissions ;;
+    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unbekannt: $a" >&2; exit 1 ;;
+  esac
+done
+
+[ -f "$MODEL" ] || { echo "Modell fehlt: $MODEL" >&2; exit 1; }
+
+cleanup() { pkill -x say 2>/dev/null; rm -f "$LOCK"; rm -rf "$WORK"; echo; echo "Tschüss."; }
+trap cleanup EXIT INT TERM
+: > "$LOCK"   # sagt speak-answer.sh: Finger weg, ich spreche selbst
+
+if $resume && [ -s "$SESSION_FILE" ]; then
+  SID=$(cat "$SESSION_FILE"); first=false
+else
+  SID=$(uuidgen | tr 'A-Z' 'a-z'); printf '%s' "$SID" > "$SESSION_FILE"; first=true
+fi
+
+speak() { "$HOME/.claude/bin/claude-say" "$1"; }
+
+# Nichts Verwertbares aufgenommen. Kurz bremsen; kommt das am Stück zu oft vor,
+# ist das Mikro stumm oder belegt — dann aussteigen statt ewig weiterdrehen.
+too_quiet() {
+  idle=$((idle + 1))
+  if [ "$idle" -ge 25 ]; then
+    echo
+    echo "25x nichts gehört — Mikro stumm oder von einer anderen App belegt?"
+    echo "Prüfen: Systemeinstellungen > Datenschutz > Mikrofon, und ob FluidVoice/Voicely gerade lauschen."
+    exit 1
+  fi
+  sleep 0.2
+}
+
+CL_ARGS=(-p --output-format text --permission-mode "$PERMISSION_MODE"
+         --append-system-prompt "$VOICE_SYSTEM_PROMPT")
+[ -n "$CLAUDE_MODEL" ] && CL_ARGS+=(--model "$CLAUDE_MODEL")
+
+printf '\n\033[1mclaude-voice\033[0m  %s | %s | %s\n' \
+  "$(basename "$PWD")" "$PERMISSION_MODE" "$([ "$first" = true ] && echo 'neue Session' || echo "resume ${SID:0:8}")"
+echo 'Sprich einfach los. Aufnahme stoppt nach kurzer Stille. "stopp" beendet.'
+
+idle=0
+while true; do
+  printf '\n\033[2m…hört zu\033[0m\r'
+  # Startet bei Sprache, stoppt nach SILENCE_SEC Stille. `|| true`, weil rec bei
+  # Timeout/Signal nonzero liefert, die Aufnahme aber trotzdem brauchbar ist.
+  rec -q -c 1 -r 16000 -b 16 -e signed-integer "$WAV" \
+      silence 1 0.2 "$SILENCE_THRESH" 1 "$SILENCE_SEC" "$SILENCE_THRESH" \
+      trim 0 "$MAX_REC" 2>/dev/null </dev/null || true
+  [ -s "$WAV" ] || { too_quiet; continue; }
+
+  dur=$(soxi -D "$WAV" 2>/dev/null || echo 0)
+  awk -v d="$dur" -v m="$MIN_DUR" 'BEGIN{exit !(d < m)}' && { too_quiet; continue; }
+
+  printf '\033[2m…verstehe   \033[0m\r'
+  said=$(whisper-cli -m "$MODEL" -l "$WHISPER_LANG" -nt -np -t 8 \
+           --prompt "$VOCAB" --carry-initial-prompt -f "$WAV" 2>/dev/null \
+         | tr '\n' ' ' | sed 's/^ *//; s/ *$//')
+
+  # Whisper halluziniert auf Stille gern Standardphrasen — die wegwerfen.
+  lower=$(printf '%s' "$said" | tr '[:upper:]' '[:lower:]')
+  case "$lower" in
+    ''|'.'|'[blank_audio]'*|'(musik)'*|'untertitel'*|'vielen dank.'|'vielen dank!'|*amara.org*) too_quiet; continue ;;
+  esac
+  [ "${#said}" -lt 3 ] && { too_quiet; continue; }
+
+  case "$lower" in
+    stopp*|stop*|ende|ende.|beenden*|schluss*|tschüss*|'auf wiedersehen'*|exit*)
+      speak "Alles klar, bis später."; exit 0 ;;
+  esac
+
+  idle=0
+  printf '\033[1mDu:\033[0m %s\n' "$said"
+  printf '\033[2m…denkt      \033[0m\r'
+
+  if $first; then
+    reply=$(claude "${CL_ARGS[@]}" --session-id "$SID" -- "$said" 2>&1 </dev/null); rc=$?
+    first=false
+  else
+    reply=$(claude "${CL_ARGS[@]}" --resume "$SID" -- "$said" 2>&1 </dev/null); rc=$?
+  fi
+
+  if [ $rc -ne 0 ] || [ -z "$reply" ]; then
+    printf '\033[31mFehler:\033[0m %s\n' "${reply:-keine Antwort}"
+    speak "Da ist etwas schiefgegangen."
+    continue
+  fi
+
+  printf '\033[1mClaude:\033[0m %s\n' "$reply"
+  spoken=$(printf '%s' "$reply" | speakable_text)
+  [ -n "$spoken" ] || continue
+  speak "$(clip_to_sentence "$spoken" "$MAX_CHARS")"
+  sleep 0.4   # verhindert, dass das Mikro das Ende der eigenen Stimme aufnimmt
+done

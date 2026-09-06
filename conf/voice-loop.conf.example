@@ -1,0 +1,10 @@
+# Einstellungen für den Freisprech-Loop (~/.claude/bin/claude-voice).
+# Überschreibt ~/.claude/voice.conf. Alles optional.
+
+# CLAUDE_MODEL=claude-sonnet-5   # deutlich schneller als opus[1m] fürs Gespräch
+# PERMISSION_MODE=acceptEdits    # oder bypassPermissions (= was --yolo macht)
+# SILENCE_SEC=1.6                # längere Denkpausen erlaubt: hochsetzen
+# SILENCE_THRESH=2%              # lauter Raum: 3%–4%
+# MAX_REC=90                     # Sekunden pro Aufnahme
+# MIN_DUR=0.4                    # kurze Einwürfe wie "ja" werden verschluckt: runter auf 0.3
+# VOCAB="..."                    # eigene Fachwörter für whisper

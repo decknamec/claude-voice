@@ -1,0 +1,12 @@
+# Whisper-Modelle (mehrere hundert MB) — holt install.sh
+whisper-models/
+*.bin
+# Laufzeitkram
+*.log
+.DS_Store
+voice-enabled
+voice-loop.lock
+.elevenlabs-voice
+# Persönliche Konfiguration — im Repo liegen nur die .example-Dateien
+conf/voice.conf
+conf/voice-loop.conf

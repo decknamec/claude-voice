@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Voice</title>
+<style>
+/* ── Motion-Identität ────────────────────────────────────────────────
+   Archetyp Premium: eine Signature-Kurve für ~80 % der Bewegung,
+   drei Dauern, kein Overshoot. Ein Sprachassistent soll ruhig wirken. */
+:root{
+  --e: cubic-bezier(.4,0,.2,1);      /* signature */
+  --e-out: cubic-bezier(.05,.7,.1,1); /* Entrances */
+  --e-in: cubic-bezier(.3,0,1,1);     /* Exits */
+  --t-quick:140ms; --t-std:280ms; --t-slow:520ms;
+
+  --bg:#fbfaf9; --panel:#fff; --line:#e8e4df;
+  --fg:#1a1714; --fg-dim:#7a736c;
+  --accent:#5b5bd6; --accent-soft:#5b5bd622;
+  --listen:#0d9488; --think:#b45309; --speak:#4f46e5; --err:#be123c;
+  --shadow:0 1px 2px #1a171408, 0 8px 24px #1a171410;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0d0c0f; --panel:#161519; --line:#26242b;
+  --fg:#f2f0ee; --fg-dim:#8d8894;
+  --accent:#8b8bf0; --accent-soft:#8b8bf01f;
+  --listen:#2dd4bf; --think:#fbbf24; --speak:#a5b4fc; --err:#fb7185;
+  --shadow:0 1px 2px #0006, 0 12px 32px #0008;
+}}
+:root[data-theme="dark"]{
+  --bg:#0d0c0f; --panel:#161519; --line:#26242b;
+  --fg:#f2f0ee; --fg-dim:#8d8894;
+  --accent:#8b8bf0; --accent-soft:#8b8bf01f;
+  --listen:#2dd4bf; --think:#fbbf24; --speak:#a5b4fc; --err:#fb7185;
+  --shadow:0 1px 2px #0006, 0 12px 32px #0008;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+  font:15px/1.6 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
+  display:flex; flex-direction:column; align-items:center;
+  overflow-x:hidden;
+}
+
+/* ── Ambient-Layer: der Hintergrund atmet, damit die Seite nie tot wirkt ── */
+.ambient{
+  position:fixed; inset:-30%; z-index:0; pointer-events:none;
+  background:radial-gradient(closest-side, var(--glow,#5b5bd6) , transparent 70%);
+  opacity:.10; filter:blur(60px);
+  animation:breathe 11s var(--e) infinite;
+  transition:background var(--t-slow) var(--e), opacity var(--t-slow) var(--e);
+}
+@keyframes breathe{
+  0%,100%{transform:scale(1) translate(0,0)}
+  50%    {transform:scale(1.14) translate(0,-2%)}
+}
+
+header{
+  position:relative; z-index:1; width:100%; max-width:760px;
+  display:flex; align-items:center; gap:10px;
+  padding:20px 24px; font-size:12.5px; color:var(--fg-dim);
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+     transition:background var(--t-std) var(--e)}
+header b{color:var(--fg);font-weight:600}
+header .sp{flex:1}
+.chip{
+  border:1px solid var(--line); border-radius:999px; padding:3px 10px;
+  background:var(--panel); white-space:nowrap;
+}
+button.chip{color:var(--fg-dim);cursor:pointer;font:inherit;font-size:12.5px;
+  transition:color var(--t-quick) var(--e),border-color var(--t-quick) var(--e),
+             transform var(--t-quick) var(--e)}
+button.chip:hover{color:var(--fg);border-color:var(--fg-dim)}
+button.chip:active{transform:scale(.96)}
+
+/* ── Bühne ────────────────────────────────────────────────────────── */
+main{position:relative;z-index:1;width:100%;max-width:760px;padding:0 24px 40px;
+     display:flex;flex-direction:column;align-items:center;flex:1}
+.stage{position:relative;width:300px;height:300px;display:grid;place-items:center;
+       flex:none;margin:8px 0 4px}
+canvas{position:absolute;inset:0;width:300px;height:300px}
+
+/* Primary: der Orb. Press = Anticipation (scale .97) + Settle. */
+.orb{
+  position:relative; width:132px; height:132px; border-radius:50%;
+  border:none; cursor:pointer; color:#fff;
+  background:radial-gradient(circle at 35% 30%, #ffffff30, transparent 60%), var(--glow,#5b5bd6);
+  box-shadow:0 8px 32px var(--glow,#5b5bd6)55, inset 0 1px 0 #ffffff40;
+  display:grid; place-items:center;
+  transition:transform var(--t-std) var(--e), background var(--t-slow) var(--e),
+             box-shadow var(--t-slow) var(--e);
+  animation:idlebreath 4.5s ease-in-out infinite;
+}
+@keyframes idlebreath{0%,100%{transform:scale(1)}50%{transform:scale(1.018)}}
+.orb:hover{transform:scale(1.03)}
+.orb:active{transform:scale(.97);transition-duration:var(--t-quick)}
+.orb svg{width:44px;height:44px;transition:transform var(--t-std) var(--e-out)}
+body[data-state="listening"] .orb{animation:none;transform:scale(1.04)}
+body[data-state="thinking"] .orb,body[data-state="transcribing"] .orb{animation:none}
+body[data-state="speaking"] .orb{animation:none}
+
+/* Pulsringe: nur beim Zuhören, 1/3-Regel — genau zwei gleichzeitig. */
+.pulse{position:absolute;inset:0;margin:auto;width:132px;height:132px;border-radius:50%;
+  border:1.5px solid var(--glow,#5b5bd6);opacity:0;pointer-events:none}
+body[data-state="listening"] .pulse{animation:ping 2.4s var(--e-out) infinite}
+body[data-state="listening"] .pulse:nth-child(2){animation-delay:1.2s}
+@keyframes ping{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.9);opacity:0}}
+
+/* Transcribing: Shimmer-Sweep quer über den Orb. */
+.orb::after{
+  content:"";position:absolute;inset:0;border-radius:50%;opacity:0;
+  background:linear-gradient(105deg,transparent 30%,#ffffff5c 50%,transparent 70%);
+  background-size:250% 100%;
+}
+body[data-state="transcribing"] .orb::after{opacity:1;animation:sweep 1.1s var(--e) infinite}
+@keyframes sweep{0%{background-position:180% 0}100%{background-position:-80% 0}}
+
+.label{
+  margin-top:2px;font-size:13px;color:var(--fg-dim);height:20px;
+  letter-spacing:.02em;transition:color var(--t-std) var(--e);
+}
+.hint{font-size:12px;color:var(--fg-dim);opacity:.62;margin-top:6px;height:16px}
+kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-radius:5px;
+    padding:1px 5px;background:var(--panel)}
+
+/* Thinking: Dot-Kaskade, Stagger 140 ms (Micro-Cascade). */
+.dots{display:flex;gap:6px;height:8px;align-items:center;margin-top:10px;opacity:0;
+      transition:opacity var(--t-std) var(--e)}
+body[data-state="thinking"] .dots{opacity:1}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--think);
+        animation:hop 1.15s var(--e) infinite}
+.dots i:nth-child(2){animation-delay:.14s}
+.dots i:nth-child(3){animation-delay:.28s}
+@keyframes hop{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-6px);opacity:1}}
+
+/* ── Verlauf ──────────────────────────────────────────────────────── */
+.log{width:100%;display:flex;flex-direction:column;gap:12px;margin-top:22px}
+.msg{
+  border:1px solid var(--line);background:var(--panel);border-radius:14px;
+  padding:12px 15px;box-shadow:var(--shadow);
+  animation:rise var(--t-slow) var(--e-out) both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.msg .who{font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+          color:var(--fg-dim);margin-bottom:5px}
+.msg.me{border-color:var(--accent-soft);background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--panel)}
+.msg.err{border-color:var(--err);color:var(--err)}
+.msg .meta{font-size:11px;color:var(--fg-dim);margin-top:6px;opacity:.7}
+
+/* Fehler: 3 Oszillationen, keine Überschwinger — Fehler sollen fest wirken. */
+body[data-state="error"] .orb{animation:shake .38s ease-in-out}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}
+  40%{transform:translateX(9px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::after{animation:none!important;transition-duration:1ms!important}
+}
+</style>
+</head>
+<body data-state="idle">
+<div class="ambient"></div>
+
+<header>
+  <span class="dot"></span><b>Claude Voice</b>
+  <span class="sp"></span>
+  <span class="chip" id="cfg">…</span>
+  <button class="chip" id="reset" title="Neue Session beginnen">neue Session</button>
+</header>
+
+<main>
+  <div class="stage">
+    <canvas id="viz" width="600" height="600"></canvas>
+    <span class="pulse"></span><span class="pulse"></span>
+    <button class="orb" id="orb" aria-label="Aufnahme starten">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="2" width="6" height="12" rx="3"/>
+        <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/>
+      </svg>
+    </button>
+  </div>
+  <div class="label" id="label">Bereit</div>
+  <div class="dots"><i></i><i></i><i></i></div>
+  <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>Esc</kbd> stoppt</div>
+  <div class="log" id="log"></div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s)
+const orb = $('#orb'), label = $('#label'), log = $('#log'), hint = $('#hint')
+const viz = $('#viz'), ctx = viz.getContext('2d')
+
+const GLOW = { idle:'--accent', listening:'--listen', transcribing:'--accent',
+               thinking:'--think', speaking:'--speak', error:'--err' }
+const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…',
+               thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler' }
+
+let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
+
+function setState (s) {
+  state = s
+  document.body.dataset.state = s
+  label.textContent = TEXT[s] || s
+  const c = getComputedStyle(document.documentElement).getPropertyValue(GLOW[s] || '--accent').trim()
+  document.documentElement.style.setProperty('--glow', c)
+  document.querySelector('.ambient').style.background =
+    `radial-gradient(closest-side, ${c}, transparent 70%)`
+  $('.dot').style.background = c
+}
+
+function add (who, text, cls, meta) {
+  const el = document.createElement('div')
+  el.className = 'msg ' + (cls || '')
+  el.innerHTML = `<div class="who"></div><div class="body"></div>` +
+                 (meta ? `<div class="meta"></div>` : '')
+  el.querySelector('.who').textContent = who
+  el.querySelector('.body').textContent = text
+  if (meta) el.querySelector('.meta').textContent = meta
+  log.append(el)
+  el.scrollIntoView({ behavior:'smooth', block:'end' })
+  return el
+}
+
+/* ── Secondary-Layer: radiale Balken aus echten Analyser-Daten.
+   Beim Sprechen gibt es keinen Analyser (say läuft serverseitig), da wird
+   synthetisch moduliert — sichtbar lebendig, aber ruhiger als beim Zuhören. */
+let phase = 0
+function draw () {
+  requestAnimationFrame(draw)
+  const W = viz.width, C = W / 2
+  ctx.clearRect(0, 0, W, W)
+  const active = state === 'listening' || state === 'speaking'
+  if (!active) return
+
+  const col = getComputedStyle(document.documentElement).getPropertyValue('--glow').trim()
+  const N = 72, R = 152
+  phase += state === 'speaking' ? 0.055 : 0.02
+  if (analyser && state === 'listening') analyser.getByteFrequencyData(data)
+
+  ctx.lineCap = 'round'
+  for (let i = 0; i < N; i++) {
+    let v
+    if (state === 'listening') {
+      v = (data[Math.floor(i / N * (data.length * 0.55))] || 0) / 255
+    } else {
+      v = 0.18 + 0.5 * Math.abs(Math.sin(phase + i * 0.42)) * Math.abs(Math.cos(phase * 0.6 + i * 0.13))
+    }
+    const len = 5 + v * 74
+    const a = (i / N) * Math.PI * 2 - Math.PI / 2
+    ctx.strokeStyle = col
+    ctx.globalAlpha = 0.20 + v * 0.7
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(C + Math.cos(a) * R, C + Math.sin(a) * R)
+    ctx.lineTo(C + Math.cos(a) * (R + len), C + Math.sin(a) * (R + len))
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+}
+draw()
+
+async function mic () {
+  if (stream) return stream
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } })
+  ac = new AudioContext()
+  analyser = ac.createAnalyser()
+  analyser.fftSize = 512
+  analyser.smoothingTimeConstant = 0.75
+  ac.createMediaStreamSource(stream).connect(analyser)
+  data = new Uint8Array(analyser.frequencyBinCount)
+  return stream
+}
+
+async function start () {
+  if (busy || state !== 'idle') return
+  try { await mic() } catch (e) {
+    setState('error'); add('Fehler', 'Kein Mikrofonzugriff: ' + e.message, 'err')
+    return setTimeout(() => setState('idle'), 1400)
+  }
+  if (ac.state === 'suspended') await ac.resume()
+  chunks = []
+  rec = new MediaRecorder(stream, { mimeType:'audio/webm' })
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data)
+  rec.onstop = finish
+  rec.start()
+  setState('listening')
+  hint.textContent = 'Nochmal klicken oder Leertaste loslassen zum Senden'
+}
+
+function stopRec () {
+  if (rec && rec.state === 'recording') rec.stop()
+}
+
+const post = (path, body, type) => fetch(path, {
+  method:'POST', body, headers: type ? { 'content-type':type } : undefined
+}).then(async r => {
+  const j = await r.json().catch(() => ({ error:'ungültige Antwort' }))
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText)
+  return j
+})
+
+async function finish () {
+  busy = true
+  hint.textContent = 'Klick zum Sprechen · Leertaste halten · Esc stoppt'
+  try {
+    setState('transcribing')
+    const blob = new Blob(chunks, { type:'audio/webm' })
+    const { said, ms:sttMs } = await post('/api/transcribe', blob, 'application/octet-stream')
+    if (!said) { setState('idle'); busy = false; label.textContent = 'Nichts verstanden'; return }
+    add('Du', said, 'me', sttMs + ' ms lokal transkribiert')
+
+    setState('thinking')
+    const { reply, ms } = await post('/api/ask', JSON.stringify({ text: said }), 'application/json')
+    add('Claude', reply, '', (ms / 1000).toFixed(1) + ' s')
+
+    setState('speaking')
+    await post('/api/speak', JSON.stringify({ text: reply }), 'application/json')
+    setState('idle')
+  } catch (e) {
+    setState('error'); add('Fehler', e.message, 'err')
+    setTimeout(() => setState('idle'), 1600)
+  } finally { busy = false }
+}
+
+orb.addEventListener('click', () => state === 'listening' ? stopRec() : start())
+
+let held = false
+addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.repeat && !held) { e.preventDefault(); held = true; start() }
+  if (e.code === 'Escape') { post('/api/stop', '{}', 'application/json').catch(() => {}) }
+})
+addEventListener('keyup', e => {
+  if (e.code === 'Space' && held) { e.preventDefault(); held = false; stopRec() }
+})
+
+$('#reset').addEventListener('click', async () => {
+  await post('/api/reset', '{}', 'application/json').catch(() => {})
+  log.innerHTML = ''; label.textContent = 'Neue Session'
+})
+
+fetch('/api/config').then(r => r.json()).then(c => {
+  $('#cfg').textContent = `${c.model} · ${c.permissionMode} · ${c.voice}`
+}).catch(() => {})
+
+setState('idle')
+</script>
+</body>
+</html>

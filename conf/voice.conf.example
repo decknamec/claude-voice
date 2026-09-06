@@ -1,0 +1,16 @@
+# Stimme fürs Vorlesen. Auswahl anzeigen: ~/.claude/hooks/voice voices
+VOICE=Anna
+RATE=190
+MAX_CHARS=600
+
+# ── ElevenLabs (optional) ────────────────────────────────────────────
+# Ohne Key nimmt claude-say automatisch die macOS-Stimme oben.
+# Key setzen (nur du, landet im Schlüsselbund):
+#   security add-generic-password -a "$USER" -s elevenlabs-api-key -w
+# Danach:  claude-say --doctor   und   claude-say --list
+# EL_VOICE_ID=...                # leer = erste Stimme des Accounts
+# EL_MODEL=eleven_turbo_v2_5     # eleven_flash_v2_5 = schneller,
+#                                # eleven_multilingual_v2 = schöner, träger
+# EL_STABILITY=0.45
+# EL_SIMILARITY=0.75
+# EL_SPEED=1.05

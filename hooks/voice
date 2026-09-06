@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# An-/Ausschalter für das Vorlesen der Claude-Antworten.
+set -euo pipefail
+STATE="$HOME/.claude/voice-enabled"
+CONF="$HOME/.claude/voice.conf"
+VOICE="Anna"; RATE=190
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && source "$CONF"
+
+case "${1:-status}" in
+  on)     : > "$STATE"; echo "Stimme AN (${VOICE}, ${RATE} wpm)" ;;
+  off)    rm -f "$STATE"; pkill -x say 2>/dev/null || true; echo "Stimme AUS" ;;
+  toggle) if [ -f "$STATE" ]; then "$0" off; else "$0" on; fi ;;
+  stop)   pkill -x say 2>/dev/null || true; echo "abgebrochen" ;;
+  test)   say -v "$VOICE" -r "$RATE" -- "Test. So klinge ich, wenn ich dir deine Antworten vorlese." ;;
+  voices) say -v '?' | grep de_DE ;;
+  status) [ -f "$STATE" ] && echo "AN (${VOICE}, ${RATE} wpm)" || echo "AUS" ;;
+  *)      echo "voice on|off|toggle|stop|test|voices|status"; exit 1 ;;
+esac

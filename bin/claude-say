@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Sprachausgabe für alle Voice-Wege (Hook, CLI-Loop, UI).
+# Nimmt ElevenLabs wenn ein Key da ist, sonst macOS `say`. Blockiert bis fertig.
+#
+#   claude-say "Text"
+#   claude-say --list          Stimmen + Modelle des Accounts anzeigen
+#   claude-say --doctor        Konfiguration prüfen
+#
+# Key hinterlegen (macht der Nutzer selbst, landet nur im Schlüsselbund):
+#   security add-generic-password -a "$USER" -s elevenlabs-api-key -w
+set -uo pipefail
+
+VOICE=Anna; RATE=190
+EL_VOICE_ID=""                    # leer = erste Stimme des Accounts (siehe --list)
+EL_MODEL=eleven_turbo_v2_5        # Alternativen: eleven_flash_v2_5 (schneller),
+                                  # eleven_multilingual_v2 (schöner, träger)
+EL_STABILITY=0.45
+EL_SIMILARITY=0.75
+EL_SPEED=""                       # z.B. 1.05; leer = Modell-Default
+EL_FORMAT=mp3_44100_128
+# shellcheck disable=SC1090
+[ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
+[ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
+
+api_key() {
+  [ -n "${ELEVENLABS_API_KEY:-}" ] && { printf '%s' "$ELEVENLABS_API_KEY"; return 0; }
+  security find-generic-password -s elevenlabs-api-key -w 2>/dev/null && return 0
+  return 1
+}
+
+fallback() { say -v "$VOICE" -r "$RATE" -- "$1"; }
+
+el_get() {  # $1 = Pfad
+  local key; key=$(api_key) || return 1
+  curl -sS --max-time 15 -H "xi-api-key: $key" "https://api.elevenlabs.io/v1/$1"
+}
+
+case "${1:-}" in
+  --list)
+    key=$(api_key) || { echo "Kein Key. Siehe Kopf dieser Datei." >&2; exit 1; }
+    echo "== Stimmen =="
+    el_get voices | python3 -c "
+import json,sys
+for v in json.load(sys.stdin).get('voices',[]):
+    print(f\"  {v['voice_id']}  {v['name']}  ({v.get('labels',{}).get('language','?')})\")"
+    echo "== Modelle (nur mit Text-to-Speech) =="
+    el_get models | python3 -c "
+import json,sys
+for m in json.load(sys.stdin):
+    if m.get('can_do_text_to_speech'):
+        langs=[l['language_id'] for l in m.get('languages',[])]
+        print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}  {m.get('name','')}\")"
+    exit 0 ;;
+  --doctor)
+    if key=$(api_key); then echo "Key: gefunden (${#key} Zeichen)"; else echo "Key: fehlt -> nutzt macOS say ($VOICE)"; exit 0; fi
+    echo "Modell:  $EL_MODEL"
+    echo "Stimme:  ${EL_VOICE_ID:-<erste des Accounts>}"
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+           -H "xi-api-key: $key" https://api.elevenlabs.io/v1/user 2>/dev/null)
+    echo "API:     HTTP $code $([ "$code" = 200 ] && echo '(ok)' || echo '(Key ungültig?)')"
+    exit 0 ;;
+  -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+TEXT="${1:-}"
+[ -n "$TEXT" ] || exit 0
+
+key=$(api_key) || { fallback "$TEXT"; exit 0; }
+
+# Ohne konfigurierte Stimme die erste des Accounts nehmen und merken, damit der
+# Lookup nicht bei jedem Satz erneut über die Leitung geht.
+CACHE="$HOME/.claude/.elevenlabs-voice"
+if [ -z "$EL_VOICE_ID" ] && [ -s "$CACHE" ]; then EL_VOICE_ID=$(cat "$CACHE"); fi
+if [ -z "$EL_VOICE_ID" ]; then
+  EL_VOICE_ID=$(el_get voices | python3 -c "
+import json,sys
+vs=json.load(sys.stdin).get('voices',[])
+print(vs[0]['voice_id'] if vs else '')" 2>/dev/null)
+  [ -n "$EL_VOICE_ID" ] && printf '%s' "$EL_VOICE_ID" > "$CACHE"
+fi
+[ -n "$EL_VOICE_ID" ] || { fallback "$TEXT"; exit 0; }
+
+BODY=$(TEXT="$TEXT" M="$EL_MODEL" S="$EL_STABILITY" B="$EL_SIMILARITY" SP="$EL_SPEED" python3 -c "
+import json,os
+vs={'stability':float(os.environ['S']),'similarity_boost':float(os.environ['B'])}
+if os.environ['SP']: vs['speed']=float(os.environ['SP'])
+print(json.dumps({'text':os.environ['TEXT'],'model_id':os.environ['M'],'voice_settings':vs}))")
+
+TMP=$(mktemp -t claudesay).mp3
+trap 'rm -f "$TMP"' EXIT
+
+code=$(curl -sS --max-time 45 -o "$TMP" -w '%{http_code}' \
+  -X POST "https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}?output_format=${EL_FORMAT}" \
+  -H "xi-api-key: $key" -H 'content-type: application/json' \
+  --data-binary "$BODY" 2>/dev/null)
+
+if [ "$code" != 200 ] || [ ! -s "$TMP" ]; then
+  # Fehlermeldung der API auf stderr, damit man sie im Log sieht — dann sprechen
+  # wir trotzdem, nur eben mit der Systemstimme. Stille wäre die schlechteste Option.
+  echo "claude-say: ElevenLabs HTTP $code -> Fallback auf say" >&2
+  head -c 300 "$TMP" >&2 2>/dev/null; echo >&2
+  fallback "$TEXT"; exit 0
+fi
+
+afplay "$TMP"

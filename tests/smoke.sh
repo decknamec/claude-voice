@@ -122,6 +122,16 @@ t "Seitenleiste laesst sich in jeder Breite einklappen" \
   "[ -n \"\$(sed '/@media[^{]*width/q' '$REPO/ui/index.html' | grep 'data-side=.off.. main')\" ]" \
   "die Einklapp-Regel darf nicht nur in einer Breiten-Query stehen"
 
+# Ein verschluckter Zeilenumbruch hatte .keys zweimal als ".hist .keys" und
+# ".act .keys" dupliziert — tote Regeln, die nie greifen.
+t "keine doppelten CSS-Bloecke" \
+  "[ \"\$(grep -c '^\\.keys{' '$REPO/ui/index.html')\" = 1 ]" \
+  "eine Regel zweimal im Blatt heisst, ein Anker hat danebengegriffen"
+
+t "keine verwaisten CSS-Klassen" \
+  "node '$REPO/tests/orphan-css.js' '$REPO/ui/index.html'" \
+  "Regeln, deren Klasse es im Markup nicht mehr gibt, wirken stumm nicht mehr"
+
 t "hidden schlaegt eigene display-Regeln" \
   "grep -q '\\[hidden\\]{display:none' '$REPO/ui/index.html'" \
   "sonst bleibt ein Overlay mit display:grid trotz hidden sichtbar"

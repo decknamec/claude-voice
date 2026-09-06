@@ -15,21 +15,21 @@
   --t-quick:140ms; --t-std:280ms; --t-slow:520ms;
 
   --bg:#fbfaf9; --panel:#fff; --line:#e8e4df;
-  --fg:#1a1714; --fg-dim:#7a736c;
+  --fg:#1a1714; --fg-dim:#7a736c; --fg-label:#5f5952;
   --accent:#5b5bd6; --accent-soft:#5b5bd622;
   --listen:#0d9488; --think:#b45309; --speak:#4f46e5; --err:#be123c;
   --shadow:0 1px 2px #1a171408, 0 8px 24px #1a171410;
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
   --bg:#0d0c0f; --panel:#161519; --line:#26242b;
-  --fg:#f2f0ee; --fg-dim:#8d8894;
+  --fg:#f2f0ee; --fg-dim:#8d8894; --fg-label:#aaa4b2;
   --accent:#8b8bf0; --accent-soft:#8b8bf01f;
   --listen:#2dd4bf; --think:#fbbf24; --speak:#a5b4fc; --err:#fb7185;
   --shadow:0 1px 2px #0006, 0 12px 32px #0008;
 }}
 :root[data-theme="dark"]{
   --bg:#0d0c0f; --panel:#161519; --line:#26242b;
-  --fg:#f2f0ee; --fg-dim:#8d8894;
+  --fg:#f2f0ee; --fg-dim:#8d8894; --fg-label:#aaa4b2;
   --accent:#8b8bf0; --accent-soft:#8b8bf01f;
   --listen:#2dd4bf; --think:#fbbf24; --speak:#a5b4fc; --err:#fb7185;
   --shadow:0 1px 2px #0006, 0 12px 32px #0008;
@@ -89,8 +89,8 @@ main{margin-left:280px;transition:margin-left var(--t-std) var(--e)}
 body[data-side="off"] .side{transform:translateX(-100%)}
 body[data-side="off"] main{margin-left:0}
 .brand{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;color:var(--fg)}
-.sgroup{min-height:0}
-.sgroup[open].grow{flex:1;display:flex;flex-direction:column}
+.sgroup{min-height:0;flex:none}
+.sgroup[open].grow{flex:1 1 auto;display:flex;flex-direction:column}
 .sgroup summary{
   list-style:none; cursor:pointer; user-select:none;
   font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
@@ -182,21 +182,6 @@ button.chip.danger:hover{color:var(--err);border-color:var(--err)}
 button.chip.armed{color:var(--err);border-color:var(--err);background:var(--panel)}
 button.chip.active{color:var(--listen);border-color:var(--listen)}
 /* Der Modus ohne Rückfrage schaltet jede Bestätigung ab — das soll man sehen. */
-#perm.risky{color:var(--err);border-color:var(--err)}
-
-select.sel{
-  font:inherit; font-size:12.5px; color:var(--fg); cursor:pointer;
-  max-width:190px; appearance:none; padding-right:22px;
-  background-image:linear-gradient(45deg,transparent 50%,var(--fg-dim) 50%),
-                   linear-gradient(135deg,var(--fg-dim) 50%,transparent 50%);
-  background-position:right 11px center,right 7px center;
-  background-size:4px 4px,4px 4px; background-repeat:no-repeat;
-  transition:border-color var(--t-quick) var(--e);
-}
-select.sel:hover{border-color:var(--fg-dim)}
-select.sel option:disabled{color:var(--fg-dim);opacity:.5}
-select.sel:disabled{opacity:.45;cursor:not-allowed}
-
 /* Abschlusszustand: die Seite wird ruhig gestellt statt einfach tot zu sein.
    Exit-Bewegung kürzer und beschleunigend — man verabschiedet sich zügig. */
 body[data-state="off"] .ambient{opacity:0;transition:opacity var(--t-std) var(--e-in)}
@@ -300,6 +285,8 @@ button.si{
   transition:background var(--t-fast) var(--e);
 }
 button.si:hover{background:rgba(127,127,127,.14)}
+button.si:active{transform:translateY(1px)}
+button.si:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .ctxbar{width:52px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;flex:none}
 .ctxbar i{display:block;height:100%;width:0;border-radius:3px;background:var(--accent);
           transition:width var(--t-std) var(--e), background var(--t-std) var(--e)}
@@ -308,23 +295,46 @@ button.si:hover{background:rgba(127,127,127,.14)}
 .ctxbar.hot i{background:var(--err)}
 
 /* Unteragenten laufen nebenher; ohne Uebersicht merkt man nur, dass es dauert. */
+/* Farbwahl: sechs Felder, das aktive traegt einen Ring statt eines Hakens —
+   ein Haken auf farbigem Grund liest sich je nach Ton mal gut, mal gar nicht. */
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.swatches button{
+  width:22px;height:22px;border-radius:var(--r-field);border:1px solid #0003;padding:0;
+  cursor:pointer;transition:transform var(--t-quick) var(--e),box-shadow var(--t-quick) var(--e);
+}
+.swatches button:hover{transform:scale(1.1)}
+.swatches button:active{transform:scale(.94)}
+.swatches button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.swatches button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px currentColor}
+
+/* Vier Stellschrauben, die alle ueber Variablen laufen — so bleibt das
+   Verhaeltnis der Groessen zueinander erhalten. */
+body[data-dense="kompakt"]{--pad-msg:9px 12px;--gap-feed:8px}
+body[data-dense="luft"]{--pad-msg:18px 22px;--gap-feed:22px}
+body[data-radius="kantig"]{--r-pill:6px;--r-panel:4px;--r-field:4px}
+body[data-radius="weich"]{--r-pill:999px;--r-panel:20px;--r-field:14px}
+body[data-calm="an"] *{animation-duration:.001ms !important;transition-duration:.001ms !important}
+body[data-noglow="an"] .ambient{display:none}
+
 /* Ankreuzfelder in den Einstellungen: gleiche Zeilenhoehe wie die Menues,
    sonst franst die Spalte aus. */
-label.check{
-  display:flex;align-items:center;gap:9px;cursor:pointer;
-  font-size:12px;color:var(--fg-dim);padding:2px 0;
+.sgroup label.check{
+  display:flex;flex-direction:row;align-items:center;gap:9px;cursor:pointer;
+  font-size:12px;color:var(--fg-label);padding:3px 0;min-height:26px;
+  border-radius:var(--r-field);transition:color var(--t-quick) var(--e);
 }
-label.check input{
-  appearance:none;width:15px;height:15px;flex:none;border-radius:4px;
+.sgroup label.check:hover{color:var(--fg)}
+.sgroup label.check input{
+  appearance:none;width:15px;height:15px;flex:none;border-radius:calc(var(--r-field) / 2);
   border:1px solid var(--line);background:var(--panel);cursor:pointer;
   transition:background var(--t-fast) var(--e),border-color var(--t-fast) var(--e);
 }
-label.check input:checked{background:var(--accent);border-color:var(--accent)}
-label.check input:checked::after{
+.sgroup label.check input:checked{background:var(--accent);border-color:var(--accent)}
+.sgroup label.check input:checked::after{
   content:'';display:block;width:4px;height:8px;margin:1px auto 0;
   border:solid #fff;border-width:0 1.6px 1.6px 0;transform:rotate(42deg);
 }
-label.check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sgroup label.check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 body[data-wz="aus"] .msg.wz{display:none}
 
 /* MCP-Server: Name, Zustand, Anzahl der Werkzeuge. */
@@ -384,7 +394,8 @@ body[data-state="thinking"] .dots{opacity:1}
 .top{display:flex;flex-direction:column;align-items:center;padding:14px 24px 2px}
 .feed{
   padding:4px 24px 40px; overflow-y:auto; display:flex; flex-direction:column;
-  align-items:center; gap:14px; min-height:0;
+  align-items:center; gap:var(--gap-feed,14px); min-height:0;
+  font-size:var(--fs,15px);
 }
 /* Zustandsänderungen gehören nicht in den Gesprächsverlauf — sie sind
    Rückmeldung der Oberfläche, nicht Teil des Gesprächs. */
@@ -433,7 +444,7 @@ body[data-state="thinking"] .dots{opacity:1}
 .log{width:100%;max-width:720px;display:flex;flex-direction:column;gap:12px;margin-top:26px}
 .msg{
   border:1px solid var(--line);background:var(--panel);border-radius:var(--r-panel);
-  padding:12px 15px;box-shadow:var(--shadow);
+  padding:var(--pad-msg,12px 15px);box-shadow:var(--shadow);
   animation:rise var(--t-slow) var(--e-out) both;
 }
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
@@ -487,7 +498,7 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   40%{transform:translateX(9px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 
 /* Formularfelder in der Leiste. Label über dem Feld, wie überall sonst auch. */
-.sgroup label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--fg-dim)}
+.sgroup label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--fg-label)}
 .sgroup select{
   /* Ohne appearance:none zeichnet macOS sein eigenes Steuerelement in unseren
      Rahmen hinein — das ergibt den doppelten Rand. Der Pfeil kommt darum aus
@@ -506,25 +517,35 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .sgroup select:hover{border-color:var(--fg-dim)}
 /* Aufklappliste selbst dunkel halten, sonst blitzt sie weiß auf. */
 .sgroup select option,.sgroup select optgroup{background:var(--panel);color:var(--fg)}
-.slider{display:flex;flex-direction:column;gap:4px}
-.slider input[type=range]{
+/* Regler: Beschriftung links, Wert rechts, Schiene darunter. Der Wert unter
+   der Schiene kostete eine eigene Zeile und liess die Gruppe ausfransen. */
+.sgroup label.rng{gap:7px}
+.sgroup label.rng input[type=range]{margin:2px 0 4px}
+.sgroup .lrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.sgroup .lrow output{color:var(--fg);font-variant-numeric:tabular-nums;
+                     font-size:11.5px;text-align:right}
+
+/* Ankreuzfelder als eigener Block mit Haarlinie: sie folgen einem anderen
+   Rhythmus als Beschriftung-ueber-Menue und wirken sonst wie Ausreisser. */
+.sgroup .checks{
+  display:flex;flex-direction:column;gap:2px;
+  padding:8px 0 2px;border-top:1px solid var(--line);
+}
+.sgroup input[type=range]{
   -webkit-appearance:none; appearance:none; width:100%; height:3px; border-radius:2px;
   background:var(--line); cursor:pointer;
 }
-.slider input[type=range]::-webkit-slider-thumb{
+.sgroup input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
   background:var(--accent); border:0; cursor:pointer;
   transition:transform var(--t-quick) var(--e);
 }
-.slider input[type=range]:active::-webkit-slider-thumb{transform:scale(1.25)}
-.slider input[type=range]:focus-visible{box-shadow:none}
-.slider input[type=range]:focus-visible::-webkit-slider-thumb{
+.sgroup input[type=range]:active::-webkit-slider-thumb{transform:scale(1.25)}
+.sgroup input[type=range]:focus-visible{box-shadow:none}
+.sgroup input[type=range]:focus-visible::-webkit-slider-thumb{
   box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 26%, transparent);
 }
-.slider output{font-size:12.5px;color:var(--fg)}
-.sgroup select#perm.risky{color:var(--err);border-color:var(--err)}
-
-.hist{flex:1;min-height:0;overflow-y:auto;margin:0 -8px}
+.sgroup select.hist{flex:1;min-height:0;overflow-y:auto;margin:0 -8px}
 .hist .row{
   display:flex; flex-direction:column; gap:2px; padding:7px 8px; border-radius:8px;
   cursor:pointer; transition:background var(--t-quick) var(--e);
@@ -535,23 +556,6 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .hist .t{font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hist .row.now .t{color:var(--listen)}
 .hist .d{font-size:10.5px;color:var(--fg-dim)}
-.hist /* Zustandsänderungen gehören nicht in den Gesprächsverlauf — sie sind
-   Rückmeldung der Oberfläche, nicht Teil des Gesprächs. */
-.keys{
-  position:fixed; inset:0; z-index:30; display:grid; place-items:center;
-  background:color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-  animation:rise var(--t-std) var(--e-out) both;
-}
-.kbox{
-  min-width:300px; padding:22px 26px; border-radius:var(--r-panel);
-  border:1px solid var(--line); background:var(--panel); box-shadow:var(--shadow);
-}
-.kbox h3{margin:0 0 14px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-dim)}
-.kbox dl{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;margin:0;font-size:13.5px}
-.kbox dt{margin:0}
-.kbox dd{margin:0;color:var(--fg-dim)}
-.kbox .sub{margin:16px 0 0;font-size:11.5px;color:var(--fg-dim);opacity:.7}
 
 .toasts{
   position:fixed; z-index:20; top:14px; left:50%; transform:translateX(-50%);
@@ -594,23 +598,6 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .act .row.auf .arg,.act .row.auf .res{white-space:pre-wrap;overflow:visible}
 body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
 .act .res{opacity:.55}
-.act /* Zustandsänderungen gehören nicht in den Gesprächsverlauf — sie sind
-   Rückmeldung der Oberfläche, nicht Teil des Gesprächs. */
-.keys{
-  position:fixed; inset:0; z-index:30; display:grid; place-items:center;
-  background:color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-  animation:rise var(--t-std) var(--e-out) both;
-}
-.kbox{
-  min-width:300px; padding:22px 26px; border-radius:var(--r-panel);
-  border:1px solid var(--line); background:var(--panel); box-shadow:var(--shadow);
-}
-.kbox h3{margin:0 0 14px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-dim)}
-.kbox dl{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;margin:0;font-size:13.5px}
-.kbox dt{margin:0}
-.kbox dd{margin:0;color:var(--fg-dim)}
-.kbox .sub{margin:16px 0 0;font-size:11.5px;color:var(--fg-dim);opacity:.7}
 
 .toasts{
   position:fixed; z-index:20; top:14px; left:50%; transform:translateX(-50%);
@@ -691,28 +678,60 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
           <option value="claude-haiku-4-5">Haiku 4.5</option>
         </optgroup>
       </select></label>
-      <label>Denktiefe<span class="slider">
-        <input type="range" id="effort" min="0" max="5" step="1" value="0">
-        <output id="effortout">wie konfiguriert</output>
-      </span></label>
+      <label class="rng"><span class="lrow"><span>Denktiefe</span><output id="effortout">wie konfiguriert</output></span><input type="range" id="effort" min="0" max="5" step="1" value="0"></label>
       <label>Sprache<select id="lang">
         <option value="de">Deutsch</option>
         <option value="en">English</option>
         <option value="auto">automatisch erkennen</option>
       </select></label>
-      <label class="check"><input type="checkbox" id="showwz" checked>
-        <span>Werkzeugzeilen im Verlauf</span></label>
-      <label class="check"><input type="checkbox" id="wrapwz">
-        <span>Befehle vollständig zeigen</span></label>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="showwz" checked>
+          <span>Werkzeugzeilen im Verlauf</span></label>
+        <label class="check"><input type="checkbox" id="wrapwz">
+          <span>Befehle vollständig zeigen</span></label>
+      </div>
       <label>Werkzeuge<select id="perm">
         <option value="default">fragt nach</option>
         <option value="acceptEdits">Edits ohne Rückfrage</option>
         <option value="plan">nur planen</option>
+        <option value="auto">Modell entscheidet</option>
+        <option value="dontAsk">nur Vorgenehmigtes</option>
         <option value="bypassPermissions">ohne jede Rückfrage</option>
       </select></label>
       </div>
     </details>
 
+    <details class="sgroup" id="grp-look">
+      <summary>Darstellung</summary>
+      <div class="gbody">
+        <label>Design<select id="theme">
+          <option value="system">wie das System</option>
+          <option value="light">hell</option>
+          <option value="dark">dunkel</option>
+        </select></label>
+        <label>Akzent<span class="swatches" id="swatches"></span></label>
+        <label class="rng"><span class="lrow"><span>Schriftgröße</span><output id="fsizeout">normal</output></span><input type="range" id="fsize" min="0" max="4" step="1" value="2"></label>
+        <label>Dichte<select id="dense">
+          <option value="luft">luftig</option>
+          <option value="normal" selected>normal</option>
+          <option value="kompakt">kompakt</option>
+        </select></label>
+        <label>Ecken<select id="radius">
+          <option value="weich">weich</option>
+          <option value="normal" selected>normal</option>
+          <option value="kantig">kantig</option>
+        </select></label>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="calm">
+            <span>Bewegung reduzieren</span></label>
+          <label class="check"><input type="checkbox" id="noglow">
+            <span>Hintergrundschimmer aus</span></label>
+          <label class="check"><input type="checkbox" id="mute">
+            <span>Antworten stumm</span></label>
+        </div>
+        <label class="rng"><span class="lrow"><span>Sprechtempo</span><output id="rateout">100 %</output></span><input type="range" id="rate" min="70" max="150" step="5" value="100"></label>
+      </div>
+    </details>
     <details class="sgroup" id="grp-mcp">
       <summary>MCP-Server<span class="badge" id="mcpcount">–</span></summary>
       <div class="gbody"><div class="mcps" id="mcps"></div></div>
@@ -808,6 +827,8 @@ const $ = s => document.querySelector(s)
                   'step','steptxt','stepsec','status','stDauer','stTurns','stTok',
                   'stCtx','stCtxFill','stCtxBar','stCtxBtn','stCost','stMode',
                   'agents','agcount','mcps','mcpcount','showwz','wrapwz',
+                  'theme','swatches','fsize','fsizeout','dense','radius','calm',
+                  'noglow','mute','rate','rateout',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
   const fehlt = noetig.filter(id => !document.getElementById(id))
   if (!fehlt.length) return
@@ -1137,6 +1158,7 @@ $('#quit').addEventListener('click', async () => {
 // Der Server erzeugt das Audio nur noch; abgespielt wird es hier. Nur so
 // erfasst die Echounterdrückung von getUserMedia die eigene Stimme — sonst
 // hört das Mikrofon Claude und der Freihandmodus triggert auf sich selbst.
+let tempo = 1   // von der Einstellung "Sprechtempo" gesetzt
 const player = { queue: [], el: new Audio(), playing: false }
 player.el.preload = 'auto'
 
@@ -1145,6 +1167,7 @@ function playNext () {
   const id = player.queue.shift()
   player.playing = true
   player.el.src = `/api/audio/${id}?token=${encodeURIComponent(TOKEN)}`
+  player.el.playbackRate = tempo
   player.el.play().catch(() => { player.playing = false; playNext() })
 }
 player.el.addEventListener('ended', () => { player.playing = false; playNext() })
@@ -1339,7 +1362,7 @@ async function ladeVerlauf () {
 // man geredet hatte.
 function zeigeAltenVerlauf (verlauf, titel) {
   if (!verlauf?.length) {
-    trennerZeile('Kein Transkript zu dieser Sitzung gefunden — das Gedächtnis der Session ist trotzdem da')
+    trennerZeile('Kein Transkript gefunden. Das Gedächtnis der Session ist trotzdem da.')
     return
   }
   let beitraege = 0
@@ -1351,7 +1374,7 @@ function zeigeAltenVerlauf (verlauf, titel) {
       add(b.rolle === 'du' ? 'Du' : 'Claude', b.text, 'alt')
     }
   }
-  trennerZeile(`${beitraege} Beiträge aus „${titel}" wiederhergestellt — hier geht es weiter`)
+  trennerZeile(`${beitraege} Beiträge aus „${titel}" wiederhergestellt. Hier geht es weiter.`)
 }
 
 function trennerZeile (text) {
@@ -1434,7 +1457,7 @@ $('#stCtxBtn').addEventListener('click', async () => {
     zeigeKontext(c)
     const top = c.kategorien.sort((a, b) => b.tokens - a.tokens).slice(0, 6)
       .map(k => `${k.name}: ${zahl(k.tokens)}`).join(' · ')
-    toast('Kontext', `${Math.round(c.prozent)} % von ${zahl(c.max)} — ${top || 'keine Aufschlüsselung'}`, '')
+    toast('Kontext', `${Math.round(c.prozent)} % von ${zahl(c.max)}. ${top || 'keine Aufschlüsselung'}`, '')
   } catch (e) { showError(e) }
 })
 
@@ -1490,6 +1513,99 @@ function onSubagent (d) {
 setInterval(() => { if ([...agents.values()].some(a => !a.fertig)) zeichneAgents() }, 1000)
 zeichneAgents()
 
+// ── Darstellung ──────────────────────────────────────────────────────
+// Alles hier laeuft ueber Variablen und data-Attribute am body. Damit bleibt
+// eine Einstellung eine Zeile und die Verhaeltnisse untereinander stimmen.
+const merk = (k, v) => localStorage.setItem('cv-' + k, v)
+const hol = (k, standard) => localStorage.getItem('cv-' + k) ?? standard
+
+function waehler (id, key, standard, anwenden) {
+  const el = $(id)
+  const wert = hol(key, standard)
+  el.value = wert
+  anwenden(wert)
+  el.addEventListener('change', () => { merk(key, el.value); anwenden(el.value) })
+}
+
+waehler('#theme', 'theme', 'system', v => {
+  if (v === 'system') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.dataset.theme = v
+})
+waehler('#dense', 'dense', 'normal', v => { document.body.dataset.dense = v })
+waehler('#radius', 'radius', 'normal', v => { document.body.dataset.radius = v })
+
+// Sechs Akzente, alle mit genug Kontrast auf hellem wie dunklem Grund.
+const AKZENTE = [
+  ['Indigo', '#5b5bd6', '#8b8bf0'], ['Smaragd', '#0f8a5f', '#34d399'],
+  ['Bernstein', '#b45309', '#fbbf24'], ['Rose', '#be123c', '#fb7185'],
+  ['Stahl', '#475569', '#94a3b8'], ['Türkis', '#0d9488', '#2dd4bf']
+]
+function setzeAkzent (name) {
+  const a = AKZENTE.find(x => x[0] === name) || AKZENTE[0]
+  const dunkel = matchMedia('(prefers-color-scheme:dark)').matches
+  const aktiv = (document.documentElement.dataset.theme || (dunkel ? 'dark' : 'light')) === 'dark'
+  const c = aktiv ? a[2] : a[1]
+  document.documentElement.style.setProperty('--accent', c)
+  document.documentElement.style.setProperty('--accent-soft', c + '22')
+  for (const b of $('#swatches').children) b.setAttribute('aria-pressed', String(b.dataset.n === a[0]))
+}
+for (const [name, hell, dunkel] of AKZENTE) {
+  const b = document.createElement('button')
+  b.type = 'button'; b.dataset.n = name; b.title = name
+  b.style.background = hell; b.style.color = hell
+  b.setAttribute('aria-pressed', 'false')
+  b.addEventListener('click', () => { merk('akzent', name); setzeAkzent(name) })
+  $('#swatches').append(b)
+}
+setzeAkzent(hol('akzent', 'Indigo'))
+// Beim Themenwechsel den Akzent nachziehen: hell und dunkel brauchen
+// unterschiedliche Toene desselben Farbwerts.
+$('#theme').addEventListener('change', () => setzeAkzent(hol('akzent', 'Indigo')))
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',
+  () => setzeAkzent(hol('akzent', 'Indigo')))
+
+const GROESSEN = [['sehr klein', 13], ['klein', 14], ['normal', 15], ['groß', 17], ['sehr groß', 19]]
+function setzeGroesse (i) {
+  const [wort, px] = GROESSEN[i] || GROESSEN[2]
+  document.documentElement.style.setProperty('--fs', px + 'px')
+  $('#fsizeout').textContent = wort
+}
+$('#fsize').value = hol('fsize', '2')
+setzeGroesse(+$('#fsize').value)
+$('#fsize').addEventListener('input', e => { merk('fsize', e.target.value); setzeGroesse(+e.target.value) })
+
+function haken (id, key, attr, standard) {
+  const el = $(id)
+  const an = hol(key, standard ? '1' : '0') === '1'
+  el.checked = an
+  document.body.dataset[attr] = an ? 'an' : 'aus'
+  el.addEventListener('change', () => {
+    merk(key, el.checked ? '1' : '0')
+    document.body.dataset[attr] = el.checked ? 'an' : 'aus'
+  })
+}
+haken('#calm', 'calm', 'calm', false)
+haken('#noglow', 'noglow', 'noglow', false)   // angehakt = Schimmer aus
+
+// Stumm und Tempo greifen an der Wiedergabe im Browser, gelten also fuer
+// jede Stimme gleich — auch fuer die, die der Server erzeugt.
+$('#mute').checked = hol('mute', '0') === '1'
+player.el.muted = $('#mute').checked
+$('#mute').addEventListener('change', e => {
+  merk('mute', e.target.checked ? '1' : '0')
+  player.el.muted = e.target.checked
+  if (e.target.checked) stopAudio()
+})
+
+function setzeTempo (v) {
+  tempo = v / 100
+  player.el.playbackRate = tempo
+  $('#rateout').textContent = v + ' %'
+}
+$('#rate').value = hol('rate', '100')
+setzeTempo(+$('#rate').value)
+$('#rate').addEventListener('input', e => { merk('rate', e.target.value); setzeTempo(+e.target.value) })
+
 // ── MCP-Server ───────────────────────────────────────────────────────
 // Welche Server haengen an dieser Session und antworten sie ueberhaupt? Ohne
 // die Liste merkt man einen toten Server erst am fehlgeschlagenen Werkzeug.
@@ -1525,8 +1641,10 @@ async function ladeMcp () {
     }
   } catch (e) {
     box.innerHTML = ''
-    box.append(Object.assign(document.createElement('div'),
-      { className:'none', textContent:'MCP-Status nicht abrufbar: ' + e.message }))
+    const keine = /keine laufende Session/.test(e.message)
+    box.append(Object.assign(document.createElement('div'), { className:'none',
+      textContent: keine ? 'Die Session startet mit der ersten Frage. Danach steht die Liste hier.'
+                         : 'MCP-Status nicht abrufbar: ' + e.message }))
   }
 }
 // Beim Aufklappen laden, nicht beim Start — der Aufruf kostet eine Runde.
@@ -1713,7 +1831,7 @@ $('#perm').addEventListener('change', async e => {
     const r = await post('/api/permission-mode', JSON.stringify({ mode }), 'application/json')
     setPermUI(mode)
     toast('Modus', `Werkzeuge: ${PERM[mode]}` +
-        (r.restarted ? '. Session neu gestartet — dieser Modus geht nur beim Start.'
+        (r.restarted ? '. Session neu gestartet, dieser Modus geht nur beim Start.'
          : r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
   } catch (err) { showError(err, err.code) }
 })
@@ -1772,7 +1890,10 @@ es.addEventListener('error', e => {
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
 es.addEventListener('think', e => onThink(JSON.parse(e.data).text))
-es.addEventListener('stats', e => zeigeStats(JSON.parse(e.data)))
+es.addEventListener('stats', e => {
+  zeigeStats(JSON.parse(e.data))
+  if ($('#grp-mcp').open && $('#mcpcount').textContent === '–') ladeMcp()
+})
 es.addEventListener('subagent', e => onSubagent(JSON.parse(e.data)))
 // Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
 es.addEventListener('step', e => {
@@ -1805,7 +1926,7 @@ es.addEventListener('permission', e => {
   const answer = behavior => {
     el.classList.add('answered')
     el.querySelector('.body').textContent =
-      `${tool} — ${behavior === 'allow' ? 'erlaubt' : 'abgelehnt'}`
+      `${tool}: ${behavior === 'allow' ? 'erlaubt' : 'abgelehnt'}`
     setState('thinking')
     post('/api/permission', JSON.stringify({ id, behavior }), 'application/json')
       .catch(err => add('Fehler', err.message, 'err'))
@@ -1862,7 +1983,7 @@ fetch('/api/backends', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()
   for (const b of BACKENDS) {
     // Nicht verfügbare bleiben sichtbar, aber ausgegraut — mit dem Grund im
     // Label, sonst rät man, warum ElevenLabs nicht wählbar ist.
-    const o = new Option(b.available ? b.label : `${b.label} — ${b.detail}`, b.id)
+    const o = new Option(b.available ? b.label : `${b.label} (${b.detail})`, b.id)
     o.disabled = !b.available
     o.title = b.detail
     sel.append(o)

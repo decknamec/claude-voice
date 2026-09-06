@@ -300,6 +300,10 @@ function startSession (conf, resumeId) {
       cwd: CWD,
       ...(resumeId ? { resume: resumeId } : {}),
       permissionMode: permMode || conf.PERMISSION_MODE,
+      // Erlaubt den Wechsel nach bypassPermissions an der laufenden Session.
+      // Ohne das lehnt die CLI ab und man muesste neu starten. Der Modus wird
+      // dadurch nicht aktiv — nur waehlbar.
+      allowDangerouslySkipPermissions: true,
       ...(effort ? { effort } : {}),
       includePartialMessages: true,
       ...((modelOverride || conf.CLAUDE_MODEL) ? { model: modelOverride || conf.CLAUDE_MODEL } : {}),
@@ -620,7 +624,7 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/permission-mode') {
       const { mode } = JSON.parse((await body(req)).toString('utf8'))
-      const allowed = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
+      const allowed = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']
       if (!allowed.includes(mode)) return json(res, 400, { error: 'unbekannter Modus' })
       permMode = mode
       let restarted = false

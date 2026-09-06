@@ -57,6 +57,10 @@ zu starten. Das bringt drei Dinge, die vorher nicht gingen:
   entschieden hast. Über die CLI ist das nicht möglich — sie lehnt solche Aufrufe
   im Headless-Betrieb kommentarlos ab, ohne zu fragen.
 
+Der Berechtigungsmodus lässt sich im Kopf umschalten und gilt sofort für die
+laufende Session — von „fragt nach" bis „ohne jede Rückfrage". Letzteres wird
+rot dargestellt, weil es jede Bestätigung abschaltet.
+
 Der Server verlangt ein Token, das beim Start erzeugt und in die geöffnete URL
 gehängt wird. Ohne das könnte jede Webseite, die du im selben Browser offen hast,
 die Endpunkte auslösen — „nur localhost" schützt davor nicht.

@@ -80,6 +80,8 @@ button.chip:active{transform:scale(.96)}
 
 button.chip.danger:hover{color:var(--err);border-color:var(--err)}
 button.chip.active{color:var(--listen);border-color:var(--listen)}
+/* Der Modus ohne Rückfrage schaltet jede Bestätigung ab — das soll man sehen. */
+#perm.risky{color:var(--err);border-color:var(--err)}
 
 select.sel{
   font:inherit; font-size:12.5px; color:var(--fg); cursor:pointer;
@@ -263,7 +265,13 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <select class="chip sel" id="backend" title="Sprachausgabe"></select>
   <select class="chip sel" id="voice" title="Stimme"></select>
   <span class="chip" id="cwd" title="Arbeitsverzeichnis der Session">…</span>
-  <span class="chip" id="cfg" title="Modell · Berechtigungen">…</span>
+  <span class="chip" id="cfg" title="Laufendes Modell">…</span>
+  <select class="chip sel" id="perm" title="Wie mit Werkzeugen umgegangen wird">
+    <option value="default">fragt nach</option>
+    <option value="acceptEdits">Edits ohne Rückfrage</option>
+    <option value="plan">nur planen</option>
+    <option value="bypassPermissions">ohne jede Rückfrage</option>
+  </select>
   <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
   <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
   <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
@@ -673,6 +681,22 @@ function prettyModel (id) {
   return `${fam} ${m[2]}${m[3] ? '.' + m[3] : ''}`
 }
 
+function setPermUI (mode) {
+  const sel = $('#perm')
+  if ([...sel.options].some(o => o.value === mode)) sel.value = mode
+  sel.classList.toggle('risky', sel.value === 'bypassPermissions')
+}
+
+$('#perm').addEventListener('change', async e => {
+  const mode = e.target.value
+  try {
+    const r = await post('/api/permission-mode', JSON.stringify({ mode }), 'application/json')
+    setPermUI(mode)
+    add('Modus', `Werkzeuge: ${PERM[mode]}` +
+        (r.applied ? '' : ' — gilt ab der nächsten Session'), '')
+  } catch (err) { showError(err, err.code) }
+})
+
 const PERM = {
   default: 'fragt nach', auto: 'fragt nach', acceptEdits: 'Edits ohne Rückfrage',
   bypassPermissions: 'ohne jede Rückfrage', dontAsk: 'ohne Rückfrage', plan: 'nur planen'
@@ -828,8 +852,9 @@ fetch('/api/config', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).
     cwdEl.textContent = home ? c.cwd.replace(home, '~') : (c.cwd || '?')
     cwdEl.title = c.cwd || ''
   }
-  $('#cfg').textContent = `${prettyModel(c.model)} · ${PERM[c.permissionMode] || c.permissionMode}`
-  $('#cfg').title = `${c.model || 'aus deiner Konfiguration'} · ${c.permissionMode}`
+  $('#cfg').textContent = prettyModel(c.model)
+  $('#cfg').title = c.model || 'aus deiner Konfiguration'
+  setPermUI(c.permissionMode)
 }).catch(() => {})
 
 setState('idle')

@@ -186,6 +186,7 @@ async function transcribe (buf, conf) {
 
 // ── Die persistente Session ──────────────────────────────────────────
 let S = null   // { q, send, pending, sessionId }
+let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
 
 function startSession (conf) {
   const inbox = []
@@ -203,7 +204,7 @@ function startSession (conf) {
     prompt: input(),
     options: {
       cwd: CWD,
-      permissionMode: conf.PERMISSION_MODE,
+      permissionMode: permMode || conf.PERMISSION_MODE,
       includePartialMessages: true,
       ...(conf.CLAUDE_MODEL ? { model: conf.CLAUDE_MODEL } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: conf.VOICE_SYSTEM_PROMPT },
@@ -345,7 +346,7 @@ const server = createServer(async (req, res) => {
         tts: conf.TTS_BACKEND,
         voice: conf.VOICE,
         model: S?.model || conf.CLAUDE_MODEL || null,
-        permissionMode: conf.PERMISSION_MODE,
+        permissionMode: permMode || conf.PERMISSION_MODE,
         session: S?.sessionId || null,
         cwd: CWD
       })
@@ -376,6 +377,18 @@ const server = createServer(async (req, res) => {
       if (!S) startSession(conf)
       S.send(text)
       return json(res, 200, { ok: true })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/permission-mode') {
+      const { mode } = JSON.parse((await body(req)).toString('utf8'))
+      const allowed = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
+      if (!allowed.includes(mode)) return json(res, 400, { error: 'unbekannter Modus' })
+      permMode = mode
+      // Läuft schon eine Session, gilt es sofort — sonst beim nächsten Start.
+      if (S) { try { await S.q.setPermissionMode(mode) } catch (e) {
+        return json(res, 500, { error: String(e?.message || e) }) } }
+      push('state', { state: 'idle' })
+      return json(res, 200, { ok: true, mode, applied: !!S })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission') {

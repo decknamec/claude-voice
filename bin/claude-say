@@ -123,19 +123,15 @@ speak_elevenlabs() {
   local cache="$HOME/.claude/.elevenlabs-voice"
   [ -z "$EL_VOICE_ID" ] && [ -s "$cache" ] && EL_VOICE_ID=$(cat "$cache")
   if [ -z "$EL_VOICE_ID" ]; then
-    EL_VOICE_ID=$(el_get voices | python3 -c "
-import json,sys
-vs=json.load(sys.stdin).get('voices',[])
-print(vs[0]['voice_id'] if vs else '')" 2>/dev/null)
+    EL_VOICE_ID=$(el_get voices | jq -r '.voices[0].voice_id // empty' 2>/dev/null)
     [ -n "$EL_VOICE_ID" ] && printf '%s' "$EL_VOICE_ID" > "$cache"
   fi
   [ -n "$EL_VOICE_ID" ] || return 1
 
-  body=$(TEXT="$1" M="$EL_MODEL" S="$EL_STABILITY" B="$EL_SIMILARITY" SP="$EL_SPEED" python3 -c "
-import json,os
-vs={'stability':float(os.environ['S']),'similarity_boost':float(os.environ['B'])}
-if os.environ['SP']: vs['speed']=float(os.environ['SP'])
-print(json.dumps({'text':os.environ['TEXT'],'model_id':os.environ['M'],'voice_settings':vs}))")
+  body=$(jq -nc --arg t "$1" --arg m "$EL_MODEL" \
+                --argjson st "$EL_STABILITY" --argjson sb "$EL_SIMILARITY" \
+                '{text:$t, model_id:$m, voice_settings:{stability:$st, similarity_boost:$sb}}')
+  [ -n "$EL_SPEED" ] && body=$(printf '%s' "$body" | jq -c --argjson sp "$EL_SPEED" '.voice_settings.speed = $sp')
 
   tmp=$(mktemp -t claudesay).mp3
   code=$(curl -sS --max-time 45 -o "$tmp" -w '%{http_code}' \
@@ -167,39 +163,28 @@ case "${1:-}" in
     edge_voices=""; $e_ok && edge_voices=$("$(edge_bin)" --list-voices 2>/dev/null | awk '/^de-/{print $1}')
     el_voices=""
     if $el_ok; then
-      el_voices=$(el_get voices 2>/dev/null | python3 -c "
-import json,sys
-try:
-    for v in json.load(sys.stdin).get('voices',[]): print(f\"{v['voice_id']}\t{v['name']}\")
-except Exception: pass")
+      el_voices=$(el_get voices 2>/dev/null | jq -r '.voices[]? | [.voice_id, .name] | @tsv' 2>/dev/null)
     fi
 
-    ACTIVE="$TTS_BACKEND" ELOK=$el_ok ELD="$el_detail" POK=$p_ok PD="$p_detail" \
-    EOK=$e_ok ED="$e_detail" SV="$say_voices" PV="$piper_voices" EV="$edge_voices" \
-    LV="$el_voices" DEFP="$(basename "$PIPER_MODEL" .onnx)" DEFE="$EDGE_VOICE" \
-    DEFL="$EL_VOICE_ID" DEFS="$VOICE" python3 -c "
-import json,os
-def lines(k): return [x for x in os.environ.get(k,'').split('\n') if x.strip()]
-def pairs(k):
-    out=[]
-    for x in lines(k):
-        a=x.split('\t')
-        out.append({'id':a[0],'name':a[1] if len(a)>1 else a[0]})
-    return out
-def plain(k): return [{'id':x,'name':x} for x in lines(k)]
-print(json.dumps({
-  'active': os.environ['ACTIVE'],
-  'backends': [
-    {'id':'auto','label':'Automatisch','available':True,'detail':'bestes verfügbares','voices':[],'default':''},
-    {'id':'elevenlabs','label':'ElevenLabs','available':os.environ['ELOK']=='true',
-     'detail':os.environ['ELD'],'voices':pairs('LV'),'default':os.environ['DEFL'],'network':True,'cost':True},
-    {'id':'edge','label':'Edge (Microsoft)','available':os.environ['EOK']=='true',
-     'detail':os.environ['ED'],'voices':plain('EV'),'default':os.environ['DEFE'],'network':True},
-    {'id':'piper','label':'Piper (lokal)','available':os.environ['POK']=='true',
-     'detail':os.environ['PD'],'voices':plain('PV'),'default':os.environ['DEFP']},
-    {'id':'say','label':'System (macOS)','available':True,
-     'detail':'immer verfügbar','voices':plain('SV'),'default':os.environ['DEFS']},
-  ]}))"
+    jq -nc \
+      --arg active "$TTS_BACKEND" \
+      --argjson elok "$el_ok" --arg eld "$el_detail" --arg defl "$EL_VOICE_ID" \
+      --argjson pok "$p_ok"  --arg pd  "$p_detail" --arg defp "$(basename "$PIPER_MODEL" .onnx)" \
+      --argjson eok "$e_ok"  --arg ed  "$e_detail" --arg defe "$EDGE_VOICE" \
+      --arg defs "$VOICE" \
+      --arg sv "$say_voices" --arg pv "$piper_voices" --arg ev "$edge_voices" --arg lv "$el_voices" '
+        def plain: if . == "" then [] else [splits("
+") | select(length > 0) | {id: ., name: .}] end;
+        def pairs: if . == "" then [] else [splits("
+") | select(length > 0)
+                     | split("	") | {id: .[0], name: (.[1] // .[0])}] end;
+        { active: $active, backends: [
+          { id:"auto",       label:"Automatisch",      available:true,  detail:"bestes verfügbares", voices:[], default:"" },
+          { id:"elevenlabs", label:"ElevenLabs",       available:$elok, detail:$eld, voices:($lv|pairs), default:$defl, network:true, cost:true },
+          { id:"edge",       label:"Edge (Microsoft)", available:$eok,  detail:$ed,  voices:($ev|plain), default:$defe, network:true },
+          { id:"piper",      label:"Piper (lokal)",    available:$pok,  detail:$pd,  voices:($pv|plain), default:$defp },
+          { id:"say",        label:"System (macOS)",   available:true,  detail:"immer verfügbar", voices:($sv|plain), default:$defs }
+        ]}'
     exit 0 ;;
   --backends)
     printf "  %-11s %s\n" "aktiv:" "$TTS_BACKEND"
@@ -211,17 +196,12 @@ print(json.dumps({
   --list)
     key=$(api_key) || { echo "Kein Key." >&2; exit 1; }
     echo "== Stimmen =="
-    el_get voices | python3 -c "
-import json,sys
-for v in json.load(sys.stdin).get('voices',[]):
-    print(f\"  {v['voice_id']}  {v['name']}\")"
+    el_get voices | jq -r '.voices[] | "  \(.voice_id)  \(.name)"'
     echo "== Modelle =="
-    el_get models | python3 -c "
-import json,sys
-for m in json.load(sys.stdin):
-    if m.get('can_do_text_to_speech'):
-        langs=[l['language_id'] for l in m.get('languages',[])]
-        print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}\")"
+    el_get models | jq -r '.[] | select(.can_do_text_to_speech)
+      | (29 - (.model_id | length)) as $pad
+      | "  \(.model_id)\(if $pad > 0 then " " * $pad else " " end)de=\(
+          if ([.languages[]?.language_id] | index("de")) then "ja" else "nein" end)"'
     exit 0 ;;
   --doctor)
     echo "Backend: $TTS_BACKEND"
@@ -239,16 +219,15 @@ for m in json.load(sys.stdin):
     exit 0 ;;
   --find-op)
     command -v op >/dev/null 2>&1 || { echo "op fehlt." >&2; exit 1; }
-    op item list --format=json 2>/dev/null | python3 -c "
-import json,subprocess,sys,os
-for it in json.load(sys.stdin):
-    if 'eleven' not in it.get('title','').lower(): continue
-    v=it.get('vault',{}).get('name','?')
-    d=json.loads(subprocess.run(['op','item','get',it['id'],'--format=json'],
-                                capture_output=True,text=True).stdout or '{}')
-    for f in d.get('fields',[]):
-        if f.get('value'):
-            print(f\"  EL_KEY_OP_REF=\\\"op://{v}/{it['title']}/{f.get('label') or f.get('id')}\\\"\")"
+    op item list --format=json 2>/dev/null \
+      | jq -r '.[] | select(.title | ascii_downcase | contains("eleven"))
+               | [.id, (.vault.name // "?"), .title] | @tsv' \
+      | while IFS=$'\t' read -r _id _vault _title; do
+          op item get "$_id" --format=json 2>/dev/null \
+            | jq -r --arg v "$_vault" --arg t "$_title" \
+                '.fields[]? | select(.value != null)
+                 | "  EL_KEY_OP_REF=\"op://\($v)/\($t)/\(.label // .id)\""'
+        done
     exit 0 ;;
   -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac

@@ -22,6 +22,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const HOME = homedir()
 const PORT = Number(process.env.VOICE_UI_PORT || 7331)
+const CWD = process.env.VOICE_UI_CWD || HOME
 const TOKEN = process.env.VOICE_UI_TOKEN || randomBytes(24).toString('hex')
 const ORIGIN = `http://127.0.0.1:${PORT}`
 
@@ -126,7 +127,14 @@ async function startWhisper (conf) {
 
 const JUNK = /^(\.|\[blank_audio\]|\(musik\)|untertitel.*|vielen dank[.!]?|.*amara\.org.*)$/i
 
+class VoiceError extends Error {
+  constructor (code, message) { super(message); this.code = code }
+}
+
 async function transcribe (buf, conf) {
+  if (!existsSync(conf.MODEL)) {
+    throw new VoiceError('no_model', `Whisper-Modell fehlt: ${conf.MODEL}`)
+  }
   if (await startWhisper(conf)) {
     const form = new FormData()
     form.append('file', new Blob([buf]), 'in.webm')
@@ -144,9 +152,9 @@ async function transcribe (buf, conf) {
     const webm = join(dir, 'in.webm'), wav = join(dir, 'in.wav')
     await writeFile(webm, buf)
     const ff = await run('ffmpeg', ['-v', 'error', '-i', webm, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', wav])
-    if (ff.code !== 0) throw new Error('ffmpeg: ' + ff.err)
+    if (ff.code !== 0) throw new VoiceError('ffmpeg_failed', ff.err.trim().split('\n').pop() || 'unbekannt')
     const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', conf.WHISPER_LANG, '-nt', '-np', '-t', '8', '-f', wav])
-    if (w.code !== 0) throw new Error('whisper: ' + w.err)
+    if (w.code !== 0) throw new VoiceError('whisper_failed', w.err.trim().split('\n').pop() || 'unbekannt')
     const text = w.out.replace(/\n/g, ' ').trim()
     return JUNK.test(text) ? '' : text
   } finally { await rm(dir, { recursive: true, force: true }) }
@@ -170,7 +178,7 @@ function startSession (conf) {
   const q = query({
     prompt: input(),
     options: {
-      cwd: HOME,
+      cwd: CWD,
       permissionMode: conf.PERMISSION_MODE,
       includePartialMessages: true,
       ...(conf.CLAUDE_MODEL ? { model: conf.CLAUDE_MODEL } : {}),
@@ -210,15 +218,29 @@ function startSession (conf) {
             if (cut > spoken) { enqueueSpeech(buf.slice(spoken, cut), conf); spoken = cut }
           }
         } else if (msg.type === 'assistant') {
-          const text = (msg.message?.content || [])
-            .filter(b => b.type === 'text').map(b => b.text).join(' ')
+          const blocks = msg.message?.content || []
+          const text = blocks.filter(b => b.type === 'text').map(b => b.text).join(' ')
           if (text) push('message', { role: 'assistant', text })
+          // Werkzeugaufrufe sichtbar machen — sonst ist eine lange Antwort eine
+          // Blackbox, in der minutenlang nichts passiert zu sein scheint.
+          for (const b of blocks) {
+            if (b.type === 'tool_use') push('tool', { phase: 'use', id: b.id, name: b.name, input: b.input })
+          }
+        } else if (msg.type === 'user') {
+          for (const b of msg.message?.content || []) {
+            if (b.type !== 'tool_result') continue
+            const c = b.content
+            const text = typeof c === 'string' ? c
+              : Array.isArray(c) ? c.filter(x => x.type === 'text').map(x => x.text).join(' ') : ''
+            push('tool', { phase: 'result', id: b.tool_use_id, ok: !b.is_error, text: text.slice(0, 400) })
+          }
         } else if (msg.type === 'result') {
           if (buf.length > spoken) enqueueSpeech(buf.slice(spoken), conf)
           buf = ''; spoken = 0
           push('done', { subtype: msg.subtype, ms: msg.duration_ms })
-        } else if (msg.type === 'system' && msg.session_id) {
-          S.sessionId = msg.session_id
+        } else if (msg.type === 'system') {
+          if (msg.session_id) S.sessionId = msg.session_id
+          if (msg.model) S.model = msg.model
         }
       }
     } catch (e) {
@@ -287,9 +309,10 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         tts: conf.TTS_BACKEND,
         voice: conf.VOICE,
-        model: conf.CLAUDE_MODEL || 'default',
+        model: S?.model || conf.CLAUDE_MODEL || null,
         permissionMode: conf.PERMISSION_MODE,
-        session: S?.sessionId || null
+        session: S?.sessionId || null,
+        cwd: CWD
       })
     }
 
@@ -303,6 +326,13 @@ const server = createServer(async (req, res) => {
       const t0 = Date.now()
       const said = await transcribe(await body(req), conf)
       return json(res, 200, { said, ms: Date.now() - t0 })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/preview') {
+      try {
+        const said = await transcribe(await body(req), conf)
+        return json(res, 200, { said })
+      } catch { return json(res, 200, { said: '' }) }   // Vorschau darf nie stören
     }
 
     if (req.method === 'POST' && url.pathname === '/api/say') {
@@ -354,7 +384,7 @@ const server = createServer(async (req, res) => {
 
     res.writeHead(404); res.end('not found')
   } catch (e) {
-    json(res, 500, { error: String(e.message || e) })
+    json(res, 500, { code: e.code || 'server', error: String(e.message || e) })
   }
 })
 

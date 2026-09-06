@@ -20,22 +20,20 @@ if [ "${1:-}" = "--uninstall" ]; then
            hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh hooks/lib/voicelock.sh hooks/lib/elkey.sh; do
     [ -L "$C/$f" ] && rm -f "$C/$f" && echo "  entfernt: $C/$f"
   done
-  python3 - "$C/settings.json" <<'PY'
-import json,sys,pathlib
-p=pathlib.Path(sys.argv[1])
-if p.exists():
-    s=json.loads(p.read_text())
-    for e in s.get("hooks",{}).get("Stop",[]):
-        e["hooks"]=[h for h in e.get("hooks",[]) if "speak-answer.sh" not in h.get("command","")]
-    p.write_text(json.dumps(s,indent=2)+"\n"); print("  Stop-Hook abgemeldet")
-PY
+  if [ -f "$C/settings.json" ]; then
+    tmp=$(mktemp)
+    jq --arg cmd "$HOOK" '
+      .hooks.Stop = [ (.hooks.Stop // [])[]
+        | .hooks = [ (.hooks // [])[] | select(.command != $cmd) ] ]
+    ' "$C/settings.json" > "$tmp" && mv "$tmp" "$C/settings.json" && echo "  Stop-Hook abgemeldet"
+  fi
   echo "Deinstalliert. ~/.claude/voice*.conf und das Modell bleiben liegen."
   exit 0
 fi
 
 echo "Abhängigkeiten:"
 missing=()
-for t in whisper-cli whisper-server rec sox ffmpeg node npm jq curl python3 say afplay; do
+for t in whisper-cli whisper-server rec sox ffmpeg node npm jq curl say afplay; do
   if command -v "$t" >/dev/null 2>&1; then printf "  ok   %s\n" "$t"
   else printf "  FEHLT %s\n" "$t"; missing+=("$t"); fi
 done
@@ -103,18 +101,18 @@ else echo "  keine Stimme — siehe README, Abschnitt \"Piper einrichten\""; fi
 
 echo
 echo "Stop-Hook in settings.json:"
-python3 - "$C/settings.json" "$HOOK" <<'PY'
-import json,sys,pathlib
-p,cmd=pathlib.Path(sys.argv[1]),sys.argv[2]
-s=json.loads(p.read_text()) if p.exists() else {}
-hooks=s.setdefault("hooks",{}); stop=hooks.setdefault("Stop",[])
-if not stop: stop.append({"matcher":"","hooks":[]})
-entry=stop[0].setdefault("hooks",[])
-if any(h.get("command")==cmd for h in entry): print("  war schon registriert")
-else:
-    entry.append({"type":"command","command":cmd})
-    p.write_text(json.dumps(s,indent=2)+"\n"); print("  registriert")
-PY
+if [ -f "$C/settings.json" ] && jq -e --arg cmd "$HOOK" \
+     '[.hooks.Stop[]?.hooks[]?.command] | index($cmd)' "$C/settings.json" >/dev/null 2>&1; then
+  echo "  war schon registriert"
+else
+  tmp=$(mktemp)
+  jq --arg cmd "$HOOK" '
+    .hooks //= {} | .hooks.Stop //= [{matcher: "", hooks: []}]
+    | .hooks.Stop[0].hooks += [{type: "command", command: $cmd}]
+  ' "${C}/settings.json" > "$tmp" 2>/dev/null \
+    || jq -n --arg cmd "$HOOK" '{hooks:{Stop:[{matcher:"",hooks:[{type:"command",command:$cmd}]}]}}' > "$tmp"
+  mv "$tmp" "$C/settings.json" && echo "  registriert"
+fi
 
 echo
 echo "Fertig. Noch zu tun:"

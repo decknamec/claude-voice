@@ -8,7 +8,7 @@ Drei Wege, die sich dieselbe Konfiguration und dieselbe Sprachausgabe teilen:
 |---|---|
 | **Vorlese-Hook** | Claude Code liest jede fertige Antwort vor. Du tippst weiter wie immer. |
 | **`claude-voice`** | Freisprech-Loop im Terminal: reden, kurz Pause, Antwort kommt gesprochen zurück. |
-| **`claude-voice-ui`** | Lokale Browser-UI mit Push-to-Talk-Knopf und Waveform. |
+| **`claude-voice-ui`** | Lokale Browser-UI: Push-to-Talk, mitlaufender Text, Freigaben für Werkzeuge, Abbrechen. |
 
 Die Spracherkennung läuft komplett lokal über [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 Nur der fertig transkribierte Text geht an die Claude-API — Audio verlässt den Rechner nie.
@@ -24,7 +24,8 @@ cd ~/claude-voice && ./install.sh
 Beispielkonfiguration, lädt auf Wunsch das Whisper-Modell (~547 MB) und registriert
 den Stop-Hook in `settings.json`. Nichts wird überschrieben, was schon existiert.
 
-Abhängigkeiten: `brew install whisper-cpp sox ffmpeg jq` plus Node (für die UI).
+Abhängigkeiten: `brew install whisper-cpp sox ffmpeg jq`. Die UI braucht zusätzlich
+Node und holt sich beim ersten Start das Agent SDK per `npm install` (einmalig).
 
 Danach `~/.claude/bin` in den PATH und `~/.claude/hooks/voice on`.
 
@@ -42,8 +43,23 @@ claude-voice-ui --port N
 ```
 
 Im Loop beendet „stopp" oder Ctrl-C. In der UI: Klick oder Leertaste halten zum
-Sprechen, Esc bricht die Ausgabe ab, „beenden" im Kopf fährt den Server herunter
-und schließt die Session.
+Sprechen, **Esc** oder „abbrechen" hält den laufenden Turn samt Sprachausgabe an,
+„beenden" fährt den Server herunter.
+
+Die UI hält **eine** Agent-Session offen, statt pro Äußerung einen neuen Prozess
+zu starten. Das bringt drei Dinge, die vorher nicht gingen:
+
+- **Antwort in ~2 s statt ~13 s.** Der Prozessstart dominierte vorher alles.
+- **Text läuft mit,** während er entsteht; jeder fertige Satz geht sofort in die
+  Sprachausgabe, statt auf die komplette Antwort zu warten.
+- **Freigaben.** Will Claude ein Werkzeug benutzen, das eine Bestätigung braucht,
+  erscheint eine Karte mit Werkzeugname und Parametern. Der Turn hält an, bis du
+  entschieden hast. Über die CLI ist das nicht möglich — sie lehnt solche Aufrufe
+  im Headless-Betrieb kommentarlos ab, ohne zu fragen.
+
+Der Server verlangt ein Token, das beim Start erzeugt und in die geöffnete URL
+gehängt wird. Ohne das könnte jede Webseite, die du im selben Browser offen hast,
+die Endpunkte auslösen — „nur localhost" schützt davor nicht.
 
 ## Sprachausgabe
 
@@ -69,6 +85,8 @@ claude-voice-ui --tts piper
 claude-say --backends        # was ist verfügbar und aktiv
 claude-say --tts edge --voice de-DE-ConradNeural "Text"
 ```
+
+Warum nicht Kokoro, MLX Audio, Kimi oder Gemma: [docs/tts-evaluation.md](docs/tts-evaluation.md).
 
 **Edge einrichten** (kostenlos, kein Key):
 
@@ -113,31 +131,20 @@ für Loop und UI. Siehe `conf/*.example` für alle Schalter. Die wichtigsten:
 - `VOCAB` — Fachwörter, auf die Whisper vorgespannt wird. Ohne das wird aus
   „Stop Hook" gern „Stopthook".
 
-## Geprüfte Alternativen, die nicht taugten
-
-Alles auf einem M5 mit demselben deutschen Satz gemessen, damit das niemand
-noch einmal durchspielen muss:
-
-| Kandidat | Ergebnis |
-|---|---|
-| **Kokoro-82M** | Kann kein Deutsch. Unterstützt nur EN, JA, ZH, ES, FR, HI, IT, PT — trotz häufiger Empfehlung als bestes leichtgewichtiges Modell. |
-| **MLX Audio** | Läuft, aber die deutschfähigen Modelle sind nicht portiert. `mlx-community/chatterbox-turbo-*` ist die englische Variante (meldet `Language: en`), KugelAudio hat gar keinen MLX-Port. Warm 4,06 s pro Satz. |
-| **Kimi-Audio** | Kann Sprache erzeugen, aber 10B Parameter, nur `en`/`zh`, auf CUDA und Docker ausgelegt. Auf einem Mac unpraktisch. |
-| **Gemma** | Kein TTS. Die Audio-Fähigkeit der E2B/E4B-Modelle ist Eingabe, nicht Ausgabe. Googles TTS heißt Gemini TTS und ist Cloud plus kostenpflichtig. |
-
-Noch nicht geprüft, aber plausibel für besseres lokales Deutsch:
-[Chatterbox Multilingual](https://huggingface.co/ResembleAI/chatterbox) (0,5B
-Llama-Backbone, MIT, 23 Sprachen inklusive Deutsch) und
-[CrispTTS](https://github.com/CrispStrobe/CrispTTS), ein CLI explizit für
-deutsches TTS. Beide brauchen PyTorch.
-
 ## Wie es zusammenhängt
 
 ```
-Mikro ──> sox rec ──> whisper.cpp ──> claude -p ──> claude-say ──> Lautsprecher
-          (Stille      (lokal, de)     (eigene       (ElevenLabs
-           erkennen)                    Session)      oder say)
+Loop:  Mikro ─> sox rec ─> whisper.cpp ─> claude -p ────────> claude-say ─> 🔈
+                (Stille)    (lokal)       (Prozess je Turn)
+
+UI:    Mikro ─> Browser ─> whisper-server ─> Agent SDK ──┬──> claude-say ─> 🔈
+                            (Modell bleibt   (eine offene │     (satzweise)
+                             geladen)         Session)    └──> Freigabe-Karte
 ```
+
+Der Loop startet weiterhin einen Prozess je Äußerung — für ein Terminal-Werkzeug
+ist das vertretbar. Die UI hält die Session offen, weil sie Freigaben und
+mitlaufenden Text braucht.
 
 Loop und UI melden sich für ihre Laufzeit in `~/.claude/voice-locks/` an (eine Datei
 pro PID). Der Stop-Hook schweigt, solange dort ein lebender Prozess steht — sonst
@@ -150,10 +157,23 @@ Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.
 ## Bekannte Grenzen
 
 - Nur macOS (`say`, `afplay`, sox-Aufnahme über CoreAudio).
-- Die Sprachausgabe ist nicht der Flaschenhals: ein Turn kostet ~13 s, davon ~1 s
-  das Sprechen. Der Rest ist der Start eines frischen `claude -p` je Äußerung.
+- Der CLI-Loop startet weiterhin einen Prozess je Äußerung (~13 s pro Turn). Wer
+  Tempo will, nimmt die UI (~2 s). Der Umbau des Loops steht aus.
+- Freigaben gibt es nur in der UI. Der Loop verweigert ohne `--yolo` weiterhin
+  stillschweigend alles, was eine Bestätigung bräuchte.
 - Der Headless-Modus von `claude -p` verweigert ohne `--yolo` Tool-Aufrufe, die eine
   Bestätigung bräuchten — stillschweigend. Für echte Arbeit im Loop brauchst du das Flag.
 - Kein Wake-Word. Der Loop nimmt auf, sobald es laut genug wird.
 - Die UI bindet nur an `127.0.0.1`, weil der Endpunkt `claude -p` startet. Nicht ins
   Netz stellen.
+
+## Tests
+
+```bash
+tests/smoke.sh
+```
+
+Kein Netz, keine API-Aufrufe, wenige Sekunden. Deckt die Fehlerklasse ab, die beim
+Bau wiederholt zugeschlagen hat: bash-3.2-Syntax (macOS liefert kein bash 4),
+Argument-Parsing, Vorrang der Konfigquellen, Lock-Verhalten bei zwei parallelen
+Sprechern, Textaufbereitung, und ob die UI-Endpunkte hinter der Token-Prüfung liegen.

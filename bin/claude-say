@@ -58,7 +58,10 @@ for m in json.load(sys.stdin):
         print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}  {m.get('name','')}\")"
     exit 0 ;;
   --doctor)
-    if key=$(api_key); then
+    # Direkt aufrufen statt über $(...): in einer Subshell käme EL_KEY_SOURCE
+    # nicht zurück.
+    if el_resolve_key; then
+      key="$ELEVENLABS_API_KEY"
       echo "Key: gefunden über $EL_KEY_SOURCE (${#key} Zeichen)"
     else
       echo "Key: fehlt -> nutzt macOS say ($VOICE)"

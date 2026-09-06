@@ -7,6 +7,9 @@
 # Die Umgebungsvariable zuerst, damit langlebige Prozesse (Loop, UI) einmal
 # auflösen und ihre Kindprozesse den `op read` nicht jedes Mal neu zahlen —
 # das kostet sonst 1 bis 4 Sekunden vor jedem gesprochenen Satz.
+# Immer definiert, damit `set -u` beim Lesen nicht aussteigt.
+EL_KEY_SOURCE="${EL_KEY_SOURCE:-}"
+
 el_resolve_key() {
   if [ -n "${ELEVENLABS_API_KEY:-}" ]; then EL_KEY_SOURCE="Umgebungsvariable"; return 0; fi
 

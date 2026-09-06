@@ -348,6 +348,33 @@ body[data-wz="aus"] .msg.wz{display:none}
 .mcp .n{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mcp .c{margin-left:auto;flex:none;opacity:.7;font-variant-numeric:tabular-nums}
 
+/* Aufgabenliste: was das Modell sich vorgenommen hat. Der laufende Punkt
+   traegt den Akzent, erledigte werden durchgestrichen und blassen ab. */
+.todos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.todos li{
+  display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--fg-label);
+}
+.todos li::before{content:'○';flex:none;opacity:.5;font-size:10px}
+.todos li.laeuft{color:var(--fg)}
+.todos li.laeuft::before{content:'◐';color:var(--accent);opacity:1}
+.todos li.fertig{opacity:.5;text-decoration:line-through}
+.todos li.fertig::before{content:'●';opacity:.6}
+
+/* Slash-Befehle: Klick schickt den Befehl als Zug ab. */
+.cmds{display:flex;flex-direction:column;gap:1px;max-height:230px;overflow-y:auto;margin:0 -8px}
+.cmds .none{font-size:11.5px;color:var(--fg-dim);opacity:.7;padding:0 8px}
+.cmd{
+  display:flex;flex-direction:column;gap:1px;padding:5px 8px;border-radius:var(--r-field);
+  cursor:pointer;text-align:left;border:0;background:none;font:inherit;width:100%;
+  transition:background var(--t-quick) var(--e);
+}
+.cmd:hover{background:var(--accent-soft)}
+.cmd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.cmd .n{font-size:12px;color:var(--fg)}
+.cmd .b{font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zw{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.5;
+    stroke-linecap:round;flex:none;opacity:.75}
+
 .agents{display:flex;flex-direction:column;gap:8px}
 .agents .none{font-size:11.5px;color:var(--fg-dim);opacity:.7}
 .ag{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
@@ -637,16 +664,18 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="keys" id="keys" hidden>
   <div class="kbox">
-    <h3>Tastatur</h3>
+    <h3 data-i18n>Tastatur</h3>
     <dl>
-      <dt><kbd>Leertaste</kbd></dt><dd>halten zum Sprechen</dd>
-      <dt><kbd>Esc</kbd></dt><dd>laufenden Turn abbrechen</dd>
-      <dt><kbd>F</kbd></dt><dd>Freihändig an und aus</dd>
-      <dt><kbd>A</kbd></dt><dd>Aktivitätsspur</dd>
-      <dt><kbd>N</kbd></dt><dd>neue Session</dd>
-      <dt><kbd>?</kbd></dt><dd>diese Übersicht</dd>
+      <dt><kbd data-i18n>Leertaste</kbd></dt><dd data-i18n>halten zum Sprechen</dd>
+      <dt><kbd>Esc</kbd></dt><dd data-i18n>laufenden Turn abbrechen</dd>
+      <dt><kbd>F</kbd></dt><dd data-i18n>Freihändig an und aus</dd>
+      <dt><kbd>A</kbd></dt><dd data-i18n>Aktivitätsspur</dd>
+      <dt><kbd>N</kbd></dt><dd data-i18n>neue Session</dd>
+      <dt><kbd>S</kbd></dt><dd data-i18n>Seitenleiste ein und aus</dd>
+      <dt><kbd data-i18n>Umschalt</kbd>+<kbd>Tab</kbd></dt><dd data-i18n>Werkzeug-Modus wechseln</dd>
+      <dt><kbd>?</kbd></dt><dd data-i18n>diese Übersicht</dd>
     </dl>
-    <p class="sub">Irgendwo klicken schließt.</p>
+    <p class="sub" data-i18n>Irgendwo klicken schließt.</p>
   </div>
 </div>
 
@@ -655,12 +684,12 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
     <div class="brand"><span class="dot"></span><b>Claude Voice</b></div>
 
     <details class="sgroup" id="grp-set" open>
-      <summary>Einstellungen</summary>
+      <summary><span data-i18n>Einstellungen</span></summary>
       <div class="gbody" id="settings">
-      <label>Sprachausgabe<select id="backend"></select></label>
-      <label>Stimme<select id="voice"></select></label>
-      <label>Modell<select id="model">
-        <option value="">wie konfiguriert</option>
+      <label><span data-i18n>Sprachausgabe</span><select id="backend"></select></label>
+      <label><span data-i18n>Stimme</span><select id="voice"></select></label>
+      <label><span data-i18n>Modell</span><select id="model">
+        <option value="" data-i18n>wie konfiguriert</option>
         <optgroup label="Fable">
           <option value="claude-fable-5">Fable 5</option>
         </optgroup>
@@ -678,101 +707,109 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
           <option value="claude-haiku-4-5">Haiku 4.5</option>
         </optgroup>
       </select></label>
-      <label class="rng"><span class="lrow"><span>Denktiefe</span><output id="effortout">wie konfiguriert</output></span><input type="range" id="effort" min="0" max="5" step="1" value="0"></label>
-      <label>Sprache<select id="lang">
-        <option value="de">Deutsch</option>
-        <option value="en">English</option>
-        <option value="auto">automatisch erkennen</option>
+      <label class="rng"><span class="lrow"><span data-i18n>Denktiefe</span><output id="effortout">wie konfiguriert</output></span><input type="range" id="effort" min="0" max="5" step="1" value="0"></label>
+      <label><span data-i18n>Sprache</span><select id="lang">
+        <option value="de" data-i18n>Deutsch</option>
+        <option value="en" data-i18n>English</option>
+        <option value="auto" data-i18n>automatisch erkennen</option>
       </select></label>
       <div class="checks">
         <label class="check"><input type="checkbox" id="showwz" checked>
-          <span>Werkzeugzeilen im Verlauf</span></label>
+          <span data-i18n>Werkzeugzeilen im Verlauf</span></label>
         <label class="check"><input type="checkbox" id="wrapwz">
-          <span>Befehle vollständig zeigen</span></label>
+          <span data-i18n>Befehle vollständig zeigen</span></label>
       </div>
-      <label>Werkzeuge<select id="perm">
-        <option value="default">fragt nach</option>
-        <option value="acceptEdits">Edits ohne Rückfrage</option>
-        <option value="plan">nur planen</option>
-        <option value="auto">Modell entscheidet</option>
-        <option value="dontAsk">nur Vorgenehmigtes</option>
-        <option value="bypassPermissions">ohne jede Rückfrage</option>
+      <label><span data-i18n>Werkzeuge</span><select id="perm">
+        <option value="default" data-i18n>fragt nach</option>
+        <option value="acceptEdits" data-i18n>Edits ohne Rückfrage</option>
+        <option value="plan" data-i18n>nur planen</option>
+        <option value="auto" data-i18n>Modell entscheidet</option>
+        <option value="dontAsk" data-i18n>nur Vorgenehmigtes</option>
+        <option value="bypassPermissions" data-i18n>ohne jede Rückfrage</option>
       </select></label>
       </div>
     </details>
 
     <details class="sgroup" id="grp-look">
-      <summary>Darstellung</summary>
+      <summary><span data-i18n>Darstellung</span></summary>
       <div class="gbody">
-        <label>Design<select id="theme">
-          <option value="system">wie das System</option>
-          <option value="light">hell</option>
-          <option value="dark">dunkel</option>
+        <label><span data-i18n>Design</span><select id="theme">
+          <option value="system" data-i18n>wie das System</option>
+          <option value="light" data-i18n>hell</option>
+          <option value="dark" data-i18n>dunkel</option>
         </select></label>
-        <label>Akzent<span class="swatches" id="swatches"></span></label>
-        <label class="rng"><span class="lrow"><span>Schriftgröße</span><output id="fsizeout">normal</output></span><input type="range" id="fsize" min="0" max="4" step="1" value="2"></label>
-        <label>Dichte<select id="dense">
-          <option value="luft">luftig</option>
-          <option value="normal" selected>normal</option>
-          <option value="kompakt">kompakt</option>
+        <label><span data-i18n>Akzent</span><span class="swatches" id="swatches"></span></label>
+        <label class="rng"><span class="lrow"><span data-i18n>Schriftgröße</span><output id="fsizeout">normal</output></span><input type="range" id="fsize" min="0" max="4" step="1" value="2"></label>
+        <label><span data-i18n>Dichte</span><select id="dense">
+          <option value="luft" data-i18n>luftig</option>
+          <option value="normal" selected data-i18n>normal</option>
+          <option value="kompakt" data-i18n>kompakt</option>
         </select></label>
-        <label>Ecken<select id="radius">
-          <option value="weich">weich</option>
-          <option value="normal" selected>normal</option>
-          <option value="kantig">kantig</option>
+        <label><span data-i18n>Ecken</span><select id="radius">
+          <option value="weich" data-i18n>weich</option>
+          <option value="normal" selected data-i18n>normal</option>
+          <option value="kantig" data-i18n>kantig</option>
         </select></label>
         <div class="checks">
           <label class="check"><input type="checkbox" id="calm">
-            <span>Bewegung reduzieren</span></label>
+            <span data-i18n>Bewegung reduzieren</span></label>
           <label class="check"><input type="checkbox" id="noglow">
-            <span>Hintergrundschimmer aus</span></label>
+            <span data-i18n>Hintergrundschimmer aus</span></label>
           <label class="check"><input type="checkbox" id="mute">
-            <span>Antworten stumm</span></label>
+            <span data-i18n>Antworten stumm</span></label>
         </div>
-        <label class="rng"><span class="lrow"><span>Sprechtempo</span><output id="rateout">100 %</output></span><input type="range" id="rate" min="70" max="150" step="5" value="100"></label>
+        <label class="rng"><span class="lrow"><span data-i18n>Sprechtempo</span><output id="rateout">100 %</output></span><input type="range" id="rate" min="70" max="150" step="5" value="100"></label>
       </div>
     </details>
+    <details class="sgroup" id="grp-todo" hidden>
+      <summary><span data-i18n>Aufgaben</span><span class="badge" id="todocount">0</span></summary>
+      <div class="gbody"><ol class="todos" id="todos"></ol></div>
+    </details>
+    <details class="sgroup" id="grp-cmd">
+      <summary><span data-i18n>Befehle</span><span class="badge" id="cmdcount">–</span></summary>
+      <div class="gbody"><div class="cmds" id="cmds"></div></div>
+    </details>
     <details class="sgroup" id="grp-mcp">
-      <summary>MCP-Server<span class="badge" id="mcpcount">–</span></summary>
+      <summary><span data-i18n>MCP-Server</span><span class="badge" id="mcpcount">–</span></summary>
       <div class="gbody"><div class="mcps" id="mcps"></div></div>
     </details>
     <details class="sgroup" id="grp-agents">
-      <summary>Unteragenten<span class="badge" id="agcount">0</span></summary>
+      <summary><span data-i18n>Unteragenten</span><span class="badge" id="agcount">0</span></summary>
       <div class="gbody"><div class="agents" id="agents"></div></div>
     </details>
     <details class="sgroup grow" id="grp-hist" open>
-      <summary>Verlauf<button class="mini" id="histreload" title="Neu laden">aktualisieren</button></summary>
+      <summary><span data-i18n>Verlauf</span><button class="mini" id="histreload" data-i18n-title title="Neu laden"><span data-i18n>aktualisieren</span></button></summary>
       <div class="gbody grow"><div class="hist" id="history"></div></div>
     </details>
   </aside>
 
   <main>
     <header>
-      <button class="chip icon" id="sidetoggle" title="Seitenleiste ein- und ausklappen (S)"
-              aria-label="Seitenleiste umschalten" aria-expanded="true">
+      <button class="chip icon" id="sidetoggle" data-i18n-title title="Seitenleiste ein- und ausklappen (S)"
+              data-i18n-aria aria-label="Seitenleiste umschalten" aria-expanded="true">
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <rect x="1.5" y="2.5" width="13" height="11" rx="2.5"/>
           <line x1="6" y1="2.5" x2="6" y2="13.5"/>
         </svg>
       </button>
       <span class="ctx">
-        <b id="cfg" title="Laufendes Modell">…</b>
+        <b id="cfg" data-i18n-title title="Laufendes Modell">…</b>
         <span class="sp2">·</span>
-        <span id="cwd" title="Arbeitsverzeichnis der Session">…</span>
+        <span id="cwd" data-i18n-title title="Arbeitsverzeichnis der Session">…</span>
       </span>
       <span class="sp"></span>
-      <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
-      <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
-      <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
-      <button class="chip" id="stop" title="Laufenden Turn abbrechen (Esc)">Abbrechen</button>
-      <button class="chip danger" id="quit" title="Server beenden und Session schließen">Beenden</button>
+      <button class="chip" id="reset" data-i18n-title title="Neue Session beginnen"><span data-i18n>Neue Session</span></button>
+      <button class="chip" id="livetoggle" data-i18n-title title="Freihändig: hört durchgehend zu, du kannst dazwischenreden"><span data-i18n>Freihändig</span></button>
+      <button class="chip" id="acttoggle" data-i18n-title title="Zeigt, welche Werkzeuge die Session benutzt"><span data-i18n>Aktivität</span></button>
+      <button class="chip" id="stop" data-i18n-title title="Laufenden Turn abbrechen (Esc)"><span data-i18n>Abbrechen</span></button>
+      <button class="chip danger" id="quit" data-i18n-title title="Server beenden und Session schließen"><span data-i18n>Beenden</span></button>
     </header>
 
     <section class="top">
       <div class="stage">
         <canvas id="viz" width="600" height="600"></canvas>
         <span class="pulse"></span><span class="pulse"></span>
-        <button class="orb" id="orb" aria-label="Aufnahme starten">
+        <button class="orb" id="orb" data-i18n-aria aria-label="Aufnahme starten">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
                stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="2" width="6" height="12" rx="3"/>
@@ -780,7 +817,7 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
           </svg>
         </button>
       </div>
-      <div class="label" id="label">Bereit</div>
+      <div class="label" id="label" data-i18n>Bereit</div>
       <div class="dots"><i></i><i></i><i></i></div>
       <div class="step" id="step" hidden>
         <span class="sspin" aria-hidden="true"></span>
@@ -789,29 +826,33 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
       </div>
       <div class="meter" id="meter"><span></span></div>
       <div class="preview" id="preview"></div>
-      <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>?</kbd> zeigt alle Tasten</div>
+      <div class="hint" id="hint"><span data-i18n>Klick zum Sprechen</span> · <kbd data-i18n>Leertaste</kbd>
+        <span data-i18n>halten</span> · <kbd>?</kbd> <span data-i18n>zeigt alle Tasten</span></div>
     </section>
 
     <section class="feed" id="feed">
       <div class="empty" id="empty">
-        <p>Noch nichts gesprochen.</p>
-        <p class="sub">Halte die Leertaste oder klicke auf den Kreis. Für ein durchgehendes
-           Gespräch schalte oben <b>Freihändig</b> ein.</p>
+        <p data-i18n>Noch nichts gesprochen.</p>
+        <p class="sub" data-i18n>Halte die Leertaste oder klicke auf den Kreis. Für ein
+           durchgehendes Gespräch schalte oben Freihändig ein.</p>
       </div>
       <div class="log" id="log"></div>
       <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
     </section>
     <footer class="status" id="status">
-      <span class="si" title="Laufzeit dieser Session"><b id="stDauer">0:00</b></span>
-      <span class="si" title="Abgeschlossene Züge"><b id="stTurns">0</b> Züge</span>
-      <span class="si" title="Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen">
+      <span class="si" id="stZweigBox" hidden data-i18n-title title="Git-Zweig im Arbeitsverzeichnis">
+        <svg viewBox="0 0 16 16" class="zw" aria-hidden="true"><path d="M4 2v8m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8-8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4c0 3-3 3-5 4"/></svg>
+        <b id="stZweig"></b></span>
+      <span class="si" data-i18n-title title="Laufzeit dieser Session"><b id="stDauer">0:00</b></span>
+      <span class="si" data-i18n-title title="Abgeschlossene Züge"><b id="stTurns">0</b> <span data-i18n>Züge</span></span>
+      <span class="si" data-i18n-title title="Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen">
         <b id="stTok">0 ↑ 0 ↓</b></span>
       <button class="si ctxi" id="stCtxBtn"
-              title="Füllstand des Kontextfensters · klicken für die Aufschlüsselung">
+              data-i18n-title title="Füllstand des Kontextfensters · klicken für die Aufschlüsselung">
         <span class="ctxbar" id="stCtxBar"><i id="stCtxFill"></i></span><b id="stCtx">–</b></button>
-      <span class="si" title="Kosten laut SDK"><b id="stCost">–</b></span>
+      <span class="si" data-i18n-title title="Kosten laut SDK"><b id="stCost">–</b></span>
       <span class="sp"></span>
-      <button class="si mode" id="stMode" title="Werkzeug-Modus · Umschalt+Tab wechselt">fragt nach</button>
+      <button class="si mode" id="stMode" data-i18n-title title="Werkzeug-Modus · Umschalt+Tab wechselt"><span data-i18n>fragt nach</span></button>
     </footer>
   </main>
 </div>
@@ -827,6 +868,8 @@ const $ = s => document.querySelector(s)
                   'step','steptxt','stepsec','status','stDauer','stTurns','stTok',
                   'stCtx','stCtxFill','stCtxBar','stCtxBtn','stCost','stMode',
                   'agents','agcount','mcps','mcpcount','showwz','wrapwz',
+                  'todos','todocount','grp-todo','cmds','cmdcount','grp-cmd',
+                  'stZweig','stZweigBox',
                   'theme','swatches','fsize','fsizeout','dense','radius','calm',
                   'noglow','mute','rate','rateout',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
@@ -840,11 +883,154 @@ const $ = s => document.querySelector(s)
   console.error('fehlende Elemente:', fehlt)
 })()
 const orb = $('#orb'), label = $('#label'), log = $('#log'), hint = $('#hint')
+const hintStandard = hint.innerHTML
+const setzeHinweis = txt => { if (txt === null) hint.innerHTML = hintStandard; else hint.textContent = txt }
 const viz = $('#viz'), ctx = viz.getContext('2d')
 
 const GLOW = { idle:'--accent', listening:'--listen', transcribing:'--accent',
                thinking:'--think', speaking:'--speak', error:'--err', off:'--fg-dim',
                waiting:'--think' }
+// ── Sprache der Oberflaeche ──────────────────────────────────────────
+// Der deutsche Text ist zugleich der Schluessel. Das spart hundert erfundene
+// Key-Namen und macht das Zurueckschalten trivial: ohne Treffer bleibt das
+// Original stehen.
+const EN = {
+  // Tastatur
+  'Tastatur':'Keyboard', 'Leertaste':'Space', 'Umschalt':'Shift',
+  'halten zum Sprechen':'hold to talk', 'laufenden Turn abbrechen':'interrupt the running turn',
+  'Freihändig an und aus':'toggle hands-free', 'Aktivitätsspur':'activity trail',
+  'neue Session':'new session', 'Seitenleiste ein und aus':'toggle sidebar',
+  'Werkzeug-Modus wechseln':'cycle tool mode', 'diese Übersicht':'this overview',
+  'Irgendwo klicken schließt.':'Click anywhere to close.',
+  // Seitenleiste
+  'Einstellungen':'Settings', 'Sprachausgabe':'Speech output', 'Stimme':'Voice',
+  'Modell':'Model', 'wie konfiguriert':'as configured', 'Denktiefe':'Thinking depth',
+  'Sprache':'Language',
+  '. Neue Session gestartet, weil die Antwortsprache am Systemprompt hängt.':
+    '. Started a new session, because the reply language is part of the system prompt.',
+  '. Neue Session gestartet, dieser Modus geht nur beim Start.':
+    '. Started a new session, this mode can only be set at launch.',
+  '. Gilt ab der nächsten Session.':'. Takes effect with the next session.',
+  '. Neue Session gestartet, weil die Stufe beim Start gesetzt wird.':
+    '. Started a new session, because the level is set at launch.', 'Deutsch':'German', 'English':'English',
+  'automatisch erkennen':'detect automatically',
+  'Werkzeugzeilen im Verlauf':'Tool lines in the transcript',
+  'Befehle vollständig zeigen':'Show commands in full',
+  'Werkzeuge':'Tools', 'fragt nach':'asks first', 'Edits ohne Rückfrage':'edits without asking',
+  'nur planen':'plan only', 'Modell entscheidet':'model decides',
+  'nur Vorgenehmigtes':'pre-approved only', 'ohne jede Rückfrage':'never ask',
+  'Darstellung':'Appearance', 'Design':'Theme', 'wie das System':'match the system',
+  'hell':'light', 'dunkel':'dark', 'Akzent':'Accent', 'Schriftgröße':'Text size',
+  'Dichte':'Density', 'luftig':'airy', 'normal':'normal', 'kompakt':'compact',
+  'Ecken':'Corners', 'weich':'soft', 'kantig':'sharp',
+  'Bewegung reduzieren':'Reduce motion', 'Hintergrundschimmer aus':'No background glow',
+  'Antworten stumm':'Mute replies', 'Sprechtempo':'Speaking rate',
+  'MCP-Server':'MCP servers', 'Unteragenten':'Subagents', 'Verlauf':'History',
+  'aktualisieren':'refresh', 'Neu laden':'Reload',
+  // Kopfzeile und Statusleiste
+  'Neue Session':'New session', 'Freihändig':'Hands-free', 'Aktivität':'Activity',
+  'Abbrechen':'Interrupt', 'Beenden':'Quit', 'Züge':'turns',
+  'Seitenleiste ein- und ausklappen (S)':'Collapse and expand the sidebar (S)',
+  'Seitenleiste umschalten':'Toggle sidebar', 'Laufendes Modell':'Model in use',
+  'Arbeitsverzeichnis der Session':'Working directory of the session',
+  'Neue Session beginnen':'Start a new session',
+  'Freihändig: hört durchgehend zu, du kannst dazwischenreden':
+    'Hands-free: listens continuously, you can interrupt',
+  'Zeigt, welche Werkzeuge die Session benutzt':'Shows which tools the session uses',
+  'Laufenden Turn abbrechen (Esc)':'Interrupt the running turn (Esc)',
+  'Server beenden und Session schließen':'Stop the server and close the session',
+  'Aufnahme starten':'Start recording', 'Laufzeit dieser Session':'Runtime of this session',
+  'Abgeschlossene Züge':'Completed turns',
+  'Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen':
+    'Tokens: sent ↑ / received ↓, in brackets read from cache',
+  'Füllstand des Kontextfensters · klicken für die Aufschlüsselung':
+    'Context window usage · click for the breakdown',
+  'Kosten laut SDK':'Cost as reported by the SDK',
+  'Werkzeug-Modus · Umschalt+Tab wechselt':'Tool mode · Shift+Tab cycles',
+  // Buehne
+  'Bereit':'Ready', 'Klick zum Sprechen':'Click to talk', 'halten':'hold',
+  'zeigt alle Tasten':'shows every key', 'Noch nichts gesprochen.':'Nothing spoken yet.',
+  'Halte die Leertaste oder klicke auf den Kreis. Für ein durchgehendes Gespräch schalte oben Freihändig ein.':
+    'Hold the space bar or click the circle. For a continuous conversation turn on Hands-free above.',
+  // Zustaende
+  'Hört zu…':'Listening…', 'Verstehe…':'Transcribing…', 'Denkt nach…':'Thinking…',
+  'Spricht…':'Speaking…', 'Fehler':'Error',
+  'Beendet. Das Fenster kann zu.':'Stopped. You can close this window.',
+  'Wartet auf deine Freigabe':'Waiting for your approval',
+  'Denkt weiter…':'Still thinking…',
+  // Werkzeuge
+  'Führt aus':'Runs', 'Liest':'Reads', 'Schreibt':'Writes', 'Ändert':'Edits',
+  'Sucht Dateien':'Finds files', 'Durchsucht':'Searches', 'Lädt':'Fetches',
+  'Sucht im Netz':'Searches the web', 'Startet Unteragent':'Starts subagent',
+  'Plant':'Plans', 'Ändert Notebook':'Edits notebook', 'denkt':'thinking',
+  // Meldungen
+  'Session':'Session', 'Modus':'Tool mode', 'Kontext':'Context', 'Fortgesetzt':'Resumed', 'Du':'You',
+  'Aufgaben':'Tasks', 'Befehle':'Commands', 'Git-Zweig im Arbeitsverzeichnis':'Git branch of the working directory',
+  'Keine Befehle in dieser Session.':'No commands in this session.',
+  'nicht lesbar':'not readable', 'Stimme aus Konfig':'Voice from config',
+  'Automatisch':'Automatic', 'bestes verfügbares':'best available',
+  'Key über Umgebungsvariable':'key via environment variable',
+  'Edge (Microsoft)':'Edge (Microsoft)', 'Microsoft Neural, ohne Key':'Microsoft Neural, no key',
+  'Piper (lokal)':'Piper (local)', 'System (macOS)':'System (macOS)',
+  'immer verfügbar':'always available',
+  'keine Auswahl':'no choice', 'Backends nicht lesbar':'Backends not readable',
+  'sehr grob':'very coarse', 'grob':'coarse', 'mittel':'medium', 'fein':'fine', 'Es läuft noch ein Zug.':'A turn is still running.',
+  ' ms lokal transkribiert':' ms transcribed locally',
+  'Nichts verstanden':'Nothing understood',
+  'Nochmal klicken oder Leertaste loslassen zum Senden':'Click again or release space to send',
+  'Freihändig aktiv. Sprich einfach los, du kannst dazwischenreden.':
+    'Hands-free is on. Just start talking, you can interrupt.',
+  'Kalibriere den Raumpegel…':'Measuring the room level…',
+  'Freihändig ist vorgemerkt. Einmal irgendwo klicken zum Aktivieren.':
+    'Hands-free is queued. Click anywhere once to activate.',
+  'Freigabe':'Approval', 'Sprachausgabe umgestellt':'Speech output changed',
+  'keine Aufschlüsselung':'no breakdown',
+  'Keine Unteragenten in dieser Session.':'No subagents in this session.',
+  'Keine MCP-Server in dieser Session.':'No MCP servers in this session.',
+  'Die Session startet mit der ersten Frage. Danach steht die Liste hier.':
+    'The session starts with your first question. The list appears here afterwards.',
+  'Noch keine früheren Sessions in diesem Verzeichnis.':
+    'No earlier sessions in this directory yet.',
+  'verbunden':'connected', 'fehlgeschlagen':'failed', 'Anmeldung nötig':'needs sign-in',
+  'verbindet':'connecting', 'abgeschaltet':'disabled', 'Werkzeuge':'tools',
+  'fertig':'done', 'ok':'ok', 'erlaubt':'allowed', 'abgelehnt':'denied',
+  'gerade eben':'just now', 'wie das Modell vorgibt':'as the model decides',
+  'sehr klein':'very small', 'klein':'small', 'groß':'large', 'sehr groß':'very large',
+  'Indigo':'Indigo', 'Smaragd':'Emerald', 'Bernstein':'Amber', 'Rose':'Rose',
+  'Stahl':'Steel', 'Türkis':'Teal'
+}
+
+let uiSprache = 'de'
+// Ohne Treffer bleibt der deutsche Text stehen. Eine fehlende Uebersetzung
+// soll nichts kaputtmachen, nur unuebersetzt bleiben.
+const t = de => uiSprache === 'en' ? (EN[de] ?? de) : de
+
+function setzeUiSprache (code) {
+  uiSprache = code === 'en' ? 'en' : 'de'
+  document.documentElement.lang = uiSprache
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    if (el.dataset.quelle === undefined) el.dataset.quelle = el.textContent.replace(/\s+/g, ' ').trim()
+    el.textContent = t(el.dataset.quelle)
+  }
+  for (const el of document.querySelectorAll('[data-i18n-title]')) {
+    if (el.dataset.quelleTitle === undefined) el.dataset.quelleTitle = el.title
+    el.title = t(el.dataset.quelleTitle)
+  }
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) {
+    if (el.dataset.quelleAria === undefined) el.dataset.quelleAria = el.getAttribute('aria-label')
+    el.setAttribute('aria-label', t(el.dataset.quelleAria))
+  }
+  // Von Skript gesetzte Texte neu zeichnen, die kein data-i18n tragen.
+  label.textContent = t(TEXT[state] || state)
+  setPermUI($('#perm').value)
+  setzeGroesse(+$('#fsize').value)
+  zeichneAgents()
+  if ($('#grp-mcp').open) ladeMcp()
+  if ($('#grp-cmd').open) ladeBefehle()
+  if (BACKENDS.length) { fuelleBackends(); fillVoices() }
+  ladeVerlauf()
+}
+
 const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…',
                thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler',
                off:'Beendet. Das Fenster kann zu.',
@@ -884,7 +1070,7 @@ const TOOLVERB = { Bash:'Führt aus', Read:'Liest', Write:'Schreibt', Edit:'Änd
 const NURNAME = new Set(['Read','Write','Edit','NotebookEdit'])
 
 function stepLabel (name, input) {
-  const verb = TOOLVERB[name] || name
+  const verb = t(TOOLVERB[name] || name)
   const key = ARG[name]
   let arg = key && input?.[key] != null ? String(input[key]) : ''
   if (NURNAME.has(name)) arg = arg.split('/').pop()
@@ -894,11 +1080,11 @@ function stepLabel (name, input) {
 }
 
 function setState (s) {
-  if (s === 'thinking') stepShow(stepTxt.textContent || 'Denkt nach…')
+  if (s === 'thinking') stepShow(stepTxt.textContent || t('Denkt nach…'))
   else if (s === 'idle' || s === 'error' || s === 'off') stepHide()
   state = s
   document.body.dataset.state = s
-  label.textContent = TEXT[s] || s
+  label.textContent = t(TEXT[s] || s)
   const c = getComputedStyle(document.documentElement).getPropertyValue(GLOW[s] || '--accent').trim()
   document.documentElement.style.setProperty('--glow', c)
   document.querySelector('.ambient').style.background =
@@ -1059,7 +1245,7 @@ async function start () {
   rec.start(900)
   vadMode(true)
   setState('listening')
-  hint.textContent = 'Nochmal klicken oder Leertaste loslassen zum Senden'
+  setzeHinweis(t('Nochmal klicken oder Leertaste loslassen zum Senden'))
 }
 
 function stopRec () {
@@ -1084,14 +1270,14 @@ const post = (path, body, type) => fetch(path, {
 
 async function finish () {
   busy = true
-  hint.textContent = 'Klick zum Sprechen · Leertaste halten · ? zeigt alle Tasten'
+  setzeHinweis(null)
   try {
     setState('transcribing')
     clearPreview()
     const blob = new Blob(chunks, { type:'audio/webm' })
     const { said, ms:sttMs } = await post('/api/transcribe', blob, 'application/octet-stream')
-    if (!said) { setState('idle'); busy = false; label.textContent = 'Nichts verstanden'; return }
-    add('Du', said, 'me', sttMs + ' ms lokal transkribiert')
+    if (!said) { setState('idle'); busy = false; label.textContent = t('Nichts verstanden'); return }
+    add(t('Du'), said, 'me', sttMs + t(' ms lokal transkribiert'))
 
     // Ab hier übernimmt der Ereignisstrom: Text, Freigaben und das Ende des
     // Turns kommen über SSE, nicht als Antwort auf diesen Aufruf.
@@ -1100,6 +1286,16 @@ async function finish () {
   } catch (e) {
     showError(e, e.code)
   } finally { busy = false }
+}
+
+async function schickeText (text, etikett) {
+  if (busy) { toast(t('Session'), t('Es läuft noch ein Zug.'), ''); return }
+  busy = true
+  try {
+    add(t('Du'), text, 'me', etikett || '')
+    setState('thinking')
+    await post('/api/say', JSON.stringify({ text }), 'application/json')
+  } catch (e) { showError(e, e.code); busy = false }
 }
 
 orb.addEventListener('click', () => state === 'listening' ? stopRec() : start())
@@ -1127,12 +1323,12 @@ $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
   stopAudio()
   log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
-  stepHide(); thinkReset(); agents.clear(); zeichneAgents()
+  stepHide(); thinkReset(); agents.clear(); zeichneAgents(); zeigeTodos([])
   sessionStart = Date.now()
   zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
   $('#stCtx').textContent = '–'; $('#stCtxFill').style.width = '0%'
   zeigeLeer()
-  setState('idle'); label.textContent = 'Neue Session'
+  setState('idle'); label.textContent = t('Neue Session')
 })
 
 let quitArmed = false
@@ -1146,7 +1342,7 @@ $('#quit').addEventListener('click', async () => {
     return
   }
   if (state === 'listening') stopRec()
-  hint.textContent = ''
+  setzeHinweis('')
   // Der Server antwortet noch, bevor er sich abbaut — schlägt fetch trotzdem
   // fehl, ist er schon weg, und das Ergebnis für den Nutzer ist dasselbe.
   await post('/api/shutdown', '{}', 'application/json').catch(() => {})
@@ -1261,7 +1457,7 @@ function onVad (m) {
   if (m.type === 'level') { live.level = m.rms; live.floor = m.floor; drawMeter(); return }
   if (m.type === 'ready') {
     live.floor = m.floor
-    hint.textContent = 'Freihändig aktiv. Sprich einfach los, du kannst dazwischenreden.'
+    setzeHinweis(t('Freihändig aktiv. Sprich einfach los, du kannst dazwischenreden.'))
     return
   }
   if (!live.on) return
@@ -1293,7 +1489,7 @@ async function setLive (on) {
   $('#livetoggle').classList.toggle('active', on)
   localStorage.setItem('claude-voice-live', on ? '1' : '0')
   if (!on) {
-    hint.textContent = 'Klick zum Sprechen · Leertaste halten · ? zeigt alle Tasten'
+    setzeHinweis(null)
     drawMeter()
     return
   }
@@ -1301,7 +1497,7 @@ async function setLive (on) {
   if (ac.state === 'suspended') await ac.resume()
   try { await attachVad() } catch (e) { showError(e); live.on = false; return }
   live.node.port.postMessage({ recalibrate: true })
-  hint.textContent = 'Kalibriere den Raumpegel…'
+  setzeHinweis(t('Kalibriere den Raumpegel…'))
 }
 $('#livetoggle').addEventListener('click', () => setLive(!live.on))
 // Nach dem Neuladen wieder anschalten — aber erst nach einer Nutzergeste,
@@ -1309,7 +1505,7 @@ $('#livetoggle').addEventListener('click', () => setLive(!live.on))
 if (localStorage.getItem('claude-voice-live') === '1') {
   $('#livetoggle').classList.add('active')
   addEventListener('pointerdown', () => { if (!live.on) setLive(true) }, { once: true })
-  hint.textContent = 'Freihändig ist vorgemerkt. Einmal irgendwo klicken zum Aktivieren.'
+  setzeHinweis(t('Freihändig ist vorgemerkt. Einmal irgendwo klicken zum Aktivieren.'))
 }
 
 // ── Einstellungs- und Verlaufsleiste ─────────────────────────────────
@@ -1329,11 +1525,13 @@ $('#sidetoggle').addEventListener('click', () => setSide(document.body.dataset.s
 const hist = $('#history')
 function seit (ms) {
   const m = Math.round((Date.now() - ms) / 60000)
-  if (m < 1) return 'gerade eben'
-  if (m < 60) return `vor ${m} min`
+  const en = uiSprache === 'en'
+  if (m < 1) return en ? 'just now' : 'gerade eben'
+  if (m < 60) return en ? `${m} min ago` : `vor ${m} min`
   const h = Math.round(m / 60)
-  if (h < 24) return `vor ${h} h`
-  return `vor ${Math.round(h / 24)} Tagen`
+  if (h < 24) return en ? `${h} h ago` : `vor ${h} h`
+  const d = Math.round(h / 24)
+  return en ? `${d} d ago` : `vor ${d} Tagen`
 }
 
 async function ladeVerlauf () {
@@ -1342,7 +1540,7 @@ async function ladeVerlauf () {
     const { sessions } = await fetch('/api/sessions', { headers: { 'x-voice-token': TOKEN } })
       .then(r => r.json())
     hist.innerHTML = ''
-    if (!sessions.length) { hist.innerHTML = '<div class="empty">Noch keine früheren Sessions in diesem Verzeichnis.</div>'; return }
+    if (!sessions.length) { hist.innerHTML = `<div class="empty">${t('Noch keine früheren Sessions in diesem Verzeichnis.')}</div>`; return }
     for (const x of sessions) {
       const row = document.createElement('div')
       row.className = 'row' + (x.aktuell ? ' now' : '')
@@ -1390,13 +1588,13 @@ async function fortsetzen (id, titel) {
   try {
     const r = await post('/api/resume', JSON.stringify({ id }), 'application/json')
     stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); stepHide(); thinkReset()
-    agents.clear(); zeichneAgents()
+    agents.clear(); zeichneAgents(); zeigeTodos([])
     liveBubbleEl = null; busy = false; setState('idle')
     sessionStart = Date.now()
     zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
     zeigeAltenVerlauf(r.verlauf, titel)
     zeigeLeer()
-    toast('Session', `Fortgesetzt: ${titel}`, '')
+    toast(t('Session'), `${t('Fortgesetzt')}: ${titel}`, '')
     ladeVerlauf()
   } catch (e) { showError(e, e.code) }
 }
@@ -1438,6 +1636,8 @@ function zeigeStats (st) {
   $('#stCost').textContent = st.costUsd
     ? st.costUsd.toFixed(st.costUsd < 1 ? 3 : 2).replace('.', ',') + ' $' : '–'
   if (st.ctx) zeigeKontext(st.ctx)
+  $('#stZweigBox').hidden = !st.zweig
+  $('#stZweig').textContent = st.zweig || ''
 }
 
 function zeigeKontext (c) {
@@ -1457,9 +1657,66 @@ $('#stCtxBtn').addEventListener('click', async () => {
     zeigeKontext(c)
     const top = c.kategorien.sort((a, b) => b.tokens - a.tokens).slice(0, 6)
       .map(k => `${k.name}: ${zahl(k.tokens)}`).join(' · ')
-    toast('Kontext', `${Math.round(c.prozent)} % von ${zahl(c.max)}. ${top || 'keine Aufschlüsselung'}`, '')
+    toast(t('Kontext'), `${Math.round(c.prozent)} % von ${zahl(c.max)}. ${top || 'keine Aufschlüsselung'}`, '')
   } catch (e) { showError(e) }
 })
+
+// ── Aufgabenliste ────────────────────────────────────────────────────
+// Das Modell fuehrt bei laengeren Auftraegen eine Liste. Sie sagt mehr ueber
+// den Fortschritt als jede Fortschrittsleiste, weil sie vom Modell selbst kommt.
+function zeigeTodos (todos) {
+  const box = $('#todos'), grp = $('#grp-todo')
+  box.innerHTML = ''
+  if (!todos?.length) { grp.hidden = true; return }
+  grp.hidden = false
+  grp.open = true
+  const offen = todos.filter(x => x.status !== 'completed').length
+  $('#todocount').textContent = `${todos.length - offen}/${todos.length}`
+  $('#todocount').classList.toggle('an', offen > 0)
+  for (const x of todos) {
+    const li = document.createElement('li')
+    li.className = x.status === 'completed' ? 'fertig' : x.status === 'in_progress' ? 'laeuft' : ''
+    // activeForm ist die Verlaufsform ("Prüft die Tests"); waehrend etwas
+    // laeuft liest sie sich besser als der Infinitiv.
+    li.textContent = x.status === 'in_progress' && x.activeForm ? x.activeForm : x.content
+    box.append(li)
+  }
+}
+
+// ── Slash-Befehle ────────────────────────────────────────────────────
+async function ladeBefehle () {
+  const box = $('#cmds')
+  try {
+    const r = await fetch('/api/commands', { headers: { 'x-voice-token': TOKEN } })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error || 'nicht lesbar')
+    box.innerHTML = ''
+    $('#cmdcount').textContent = d.befehle.length
+    if (!d.befehle.length) {
+      box.append(Object.assign(document.createElement('div'),
+        { className:'none', textContent:t('Keine Befehle in dieser Session.') }))
+      return
+    }
+    for (const c of d.befehle) {
+      const b = document.createElement('button')
+      b.type = 'button'; b.className = 'cmd'
+      b.title = c.beschreibung + (c.hinweis ? ' · ' + c.hinweis : '')
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = '/' + c.name
+      const t2 = document.createElement('span'); t2.className = 'b'; t2.textContent = c.beschreibung
+      b.append(n, t2)
+      // Ein Slash-Befehl ist fuer die Session ein ganz normaler Zug.
+      b.addEventListener('click', () => schickeText('/' + c.name))
+      box.append(b)
+    }
+  } catch (e) {
+    box.innerHTML = ''
+    const keine = /keine laufende Session/.test(e.message)
+    box.append(Object.assign(document.createElement('div'), { className:'none',
+      textContent: keine ? t('Die Session startet mit der ersten Frage. Danach steht die Liste hier.')
+                         : t('nicht lesbar') + ': ' + e.message }))
+  }
+}
+$('#grp-cmd').addEventListener('toggle', () => { if ($('#grp-cmd').open) ladeBefehle() })
 
 // ── Unteragenten ─────────────────────────────────────────────────────
 const agBox = $('#agents')
@@ -1473,7 +1730,7 @@ function zeichneAgents () {
   b.classList.toggle('an', laufend > 0)
   if (!agents.size) {
     agBox.append(Object.assign(document.createElement('div'),
-      { className: 'none', textContent: 'Keine Unteragenten in dieser Session.' }))
+      { className: 'none', textContent: t('Keine Unteragenten in dieser Session.') }))
     // Zugeklappt haelt die Leiste ruhig, solange nichts laeuft.
     return
   }
@@ -1490,7 +1747,7 @@ function zeichneAgents () {
     el.append(h, d)
     if (a.wz) {
       const w = document.createElement('div'); w.className = 'w'
-      w.textContent = a.fertig ? (a.ok === false ? 'fehlgeschlagen' : 'fertig') : '· ' + a.wz
+      w.textContent = a.fertig ? t(a.ok === false ? 'fehlgeschlagen' : 'fertig') : '· ' + a.wz
       el.append(w)
     }
     agBox.append(el)
@@ -1551,7 +1808,7 @@ function setzeAkzent (name) {
 }
 for (const [name, hell, dunkel] of AKZENTE) {
   const b = document.createElement('button')
-  b.type = 'button'; b.dataset.n = name; b.title = name
+  b.type = 'button'; b.dataset.n = name; b.title = t(name)
   b.style.background = hell; b.style.color = hell
   b.setAttribute('aria-pressed', 'false')
   b.addEventListener('click', () => { merk('akzent', name); setzeAkzent(name) })
@@ -1568,7 +1825,7 @@ const GROESSEN = [['sehr klein', 13], ['klein', 14], ['normal', 15], ['groß', 1
 function setzeGroesse (i) {
   const [wort, px] = GROESSEN[i] || GROESSEN[2]
   document.documentElement.style.setProperty('--fs', px + 'px')
-  $('#fsizeout').textContent = wort
+  $('#fsizeout').textContent = t(wort)
 }
 $('#fsize').value = hol('fsize', '2')
 setzeGroesse(+$('#fsize').value)
@@ -1623,7 +1880,7 @@ async function ladeMcp () {
     $('#mcpcount').textContent = d.server.length
     if (!d.server.length) {
       box.append(Object.assign(document.createElement('div'),
-        { className:'none', textContent:'Keine MCP-Server in dieser Session.' }))
+        { className:'none', textContent:t('Keine MCP-Server in dieser Session.') }))
       return
     }
     for (const m of d.server) {
@@ -1635,7 +1892,7 @@ async function ladeMcp () {
       const pip = document.createElement('span'); pip.className = 'pip'
       const n = document.createElement('span'); n.className = 'n'; n.textContent = m.name
       const c = document.createElement('span'); c.className = 'c'
-      c.textContent = m.werkzeuge.length ? m.werkzeuge.length + ' Werkzeuge' : wort
+      c.textContent = m.werkzeuge.length ? m.werkzeuge.length + ' ' + t('Werkzeuge') : t(wort)
       el.append(pip, n, c)
       box.append(el)
     }
@@ -1643,7 +1900,7 @@ async function ladeMcp () {
     box.innerHTML = ''
     const keine = /keine laufende Session/.test(e.message)
     box.append(Object.assign(document.createElement('div'), { className:'none',
-      textContent: keine ? 'Die Session startet mit der ersten Frage. Danach steht die Liste hier.'
+      textContent: keine ? t('Die Session startet mit der ersten Frage. Danach steht die Liste hier.')
                          : 'MCP-Status nicht abrufbar: ' + e.message }))
   }
 }
@@ -1704,7 +1961,7 @@ function onThink (text) {
   thinkBuf += text
   const zeile = thinkBuf.split('\n').filter(z => z.trim()).pop() || ''
   stepShow(zeile.length > 96 ? '…' + zeile.slice(-96) : zeile)
-  if (!thinkRow) { thinkRow = actLine('denkt', ''); thinkRow.classList.add('dim') }
+  if (!thinkRow) { thinkRow = actLine(t('denkt'), ''); thinkRow.classList.add('dim') }
   thinkRow.querySelector('.arg').textContent = thinkBuf.slice(-400)
 }
 
@@ -1727,6 +1984,7 @@ function onTool (d) {
     if (d.phase === 'use') actLine('↳ ' + d.name, argText(d.name, d.input)).classList.add('dim')
     return
   }
+  if (d.name === 'TodoWrite' && d.phase === 'use') zeigeTodos(d.input?.todos)
   if (d.phase === 'use') {
     actRows.set(d.id, actLine(d.name, argText(d.name, d.input)))
     stepShow(stepLabel(d.name, d.input))
@@ -1736,9 +1994,9 @@ function onTool (d) {
     if (!d.ok) row.classList.add('bad')
     const r = document.createElement('span')
     r.className = 'res'
-    r.textContent = d.ok ? (d.text ? '· ' + d.text : '· ok') : '· fehlgeschlagen'
+    r.textContent = d.ok ? (d.text ? '· ' + d.text : '· ' + t('ok')) : '· ' + t('fehlgeschlagen')
     row.append(r)
-    if (busy) stepShow('Denkt weiter…')
+    if (busy) stepShow(t('Denkt weiter…'))
   }
 }
 
@@ -1749,7 +2007,7 @@ function prettyVoice (backend, id, name) {
   if (backend === 'piper') {
     const m = /^de_DE-([a-z_]+)-(x_low|low|medium|high)$/.exec(id)
     if (m) {
-      const q = { x_low:'sehr grob', low:'grob', medium:'mittel', high:'fein' }[m[2]]
+      const q = t({ x_low:'sehr grob', low:'grob', medium:'mittel', high:'fein' }[m[2]])
       return `${m[1][0].toUpperCase()}${m[1].slice(1).replace('_', ' ')}, ${q}`
     }
   }
@@ -1786,7 +2044,7 @@ $('#model').addEventListener('change', async e => {
   const model = e.target.value
   try {
     const r = await post('/api/model', JSON.stringify({ model }), 'application/json')
-    toast('Modell', (model ? prettyModel(model) : 'wie konfiguriert') +
+    toast(t('Modell'), (model ? prettyModel(model) : 'wie konfiguriert') +
         (r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
     if (r.applied) $('#cfg').textContent = prettyModel(model || null)
   } catch (err) { showError(err, err.code) }
@@ -1799,18 +2057,27 @@ $('#effort').addEventListener('change', async e => {
   const effort = EFFORT[+e.target.value]
   try {
     const r = await post('/api/effort', JSON.stringify({ effort }), 'application/json')
-    toast('Denktiefe', EFFORT_TEXT[+e.target.value] + (r.restarted
+    toast(t('Denktiefe'), EFFORT_TEXT[+e.target.value] + (r.restarted
       ? '. Neue Session gestartet, weil die Stufe beim Start gesetzt wird.' : ''), '')
   } catch (err) { showError(err, err.code) }
 })
+
+// Bei "automatisch erkennen" richtet sich die Oberflaeche nach dem Browser —
+// die Antwortsprache haengt dann am Gesprochenen, die Beschriftungen koennen
+// aber nicht mitwandern.
+const uiAus = code => code === 'auto'
+  ? (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en'
+  : code
 
 $('#lang').addEventListener('change', async e => {
   const lang = e.target.value
   try {
     const r = await post('/api/language', JSON.stringify({ lang }), 'application/json')
+    localStorage.setItem('cv-lang', lang)
+    setzeUiSprache(uiAus(lang))
     const name = e.target.options[e.target.selectedIndex].text
-    toast('Sprache', name + (r.restarted
-      ? '. Neue Session gestartet, weil die Antwortsprache am Systemprompt hängt.' : ''), '')
+    toast(t('Sprache'), name + (r.restarted
+      ? t('. Neue Session gestartet, weil die Antwortsprache am Systemprompt hängt.') : ''), '')
     if (r.restarted) { log.querySelectorAll('.msg.live').forEach(x => x.remove()); liveBubbleEl = null }
   } catch (err) { showError(err, err.code) }
 })
@@ -1830,7 +2097,7 @@ $('#perm').addEventListener('change', async e => {
   try {
     const r = await post('/api/permission-mode', JSON.stringify({ mode }), 'application/json')
     setPermUI(mode)
-    toast('Modus', `Werkzeuge: ${PERM[mode]}` +
+    toast(t('Modus'), `${t('Werkzeuge')}: ${t(PERM[mode])}` +
         (r.restarted ? '. Session neu gestartet, dieser Modus geht nur beim Start.'
          : r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
   } catch (err) { showError(err, err.code) }
@@ -1892,14 +2159,17 @@ es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
 es.addEventListener('think', e => onThink(JSON.parse(e.data).text))
 es.addEventListener('stats', e => {
   zeigeStats(JSON.parse(e.data))
+  // Beide Listen brauchen eine laufende Session. Wer die Gruppe vor dem
+  // ersten Zug aufklappt, sah sonst dauerhaft den Platzhalter.
   if ($('#grp-mcp').open && $('#mcpcount').textContent === '–') ladeMcp()
+  if ($('#grp-cmd').open && $('#cmdcount').textContent === '–') ladeBefehle()
 })
 es.addEventListener('subagent', e => onSubagent(JSON.parse(e.data)))
 // Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
 es.addEventListener('step', e => {
   const { name } = JSON.parse(e.data)
   thinkReset()
-  stepShow((TOOLVERB[name] || name) + '…')
+  stepShow(t(TOOLVERB[name] || name) + '…')
 })
 
 es.addEventListener('audio', e => { player.queue.push(JSON.parse(e.data).id); playNext() })
@@ -1926,7 +2196,7 @@ es.addEventListener('permission', e => {
   const answer = behavior => {
     el.classList.add('answered')
     el.querySelector('.body').textContent =
-      `${tool}: ${behavior === 'allow' ? 'erlaubt' : 'abgelehnt'}`
+      `${tool}: ${t(behavior === 'allow' ? 'erlaubt' : 'abgelehnt')}`
     setState('thinking')
     post('/api/permission', JSON.stringify({ id, behavior }), 'application/json')
       .catch(err => add('Fehler', err.message, 'err'))
@@ -1959,7 +2229,7 @@ function fillVoices () {
   sel.innerHTML = ''
   if (!b || !b.voices.length) {
     sel.disabled = true
-    sel.append(new Option(b && b.id === 'auto' ? 'Stimme aus Konfig' : 'keine Auswahl', ''))
+    sel.append(new Option(t(b && b.id === 'auto' ? 'Stimme aus Konfig' : 'keine Auswahl'), ''))
     return
   }
   sel.disabled = false
@@ -1976,23 +2246,29 @@ function fillVoices () {
   }
 }
 
-fetch('/api/backends', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).then(d => {
-  BACKENDS = d.backends
+function fuelleBackends () {
   const sel = $('#backend')
+  const gewaehlt = sel.value
   sel.innerHTML = ''
   for (const b of BACKENDS) {
     // Nicht verfügbare bleiben sichtbar, aber ausgegraut — mit dem Grund im
     // Label, sonst rät man, warum ElevenLabs nicht wählbar ist.
-    const o = new Option(b.available ? b.label : `${b.label} (${b.detail})`, b.id)
+    const o = new Option(b.available ? t(b.label) : `${t(b.label)} (${t(b.detail)})`, b.id)
     o.disabled = !b.available
-    o.title = b.detail
+    o.title = t(b.detail)
     sel.append(o)
   }
+  if (gewaehlt) sel.value = gewaehlt
+}
+
+fetch('/api/backends', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).then(d => {
+  BACKENDS = d.backends
+  fuelleBackends()
   const avail = BACKENDS.filter(b => b.available).map(b => b.id)
   if (!avail.includes(pick.backend)) pick.backend = avail.includes(d.active) ? d.active : avail[0]
-  sel.value = pick.backend
+  $('#backend').value = pick.backend
   fillVoices(); remember()
-}).catch(() => { $('#backend').innerHTML = '<option>Backends nicht lesbar</option>' })
+}).catch(() => { $('#backend').innerHTML = `<option>${t('Backends nicht lesbar')}</option>` })
 
 $('#backend').addEventListener('change', e => {
   pick.backend = e.target.value; pick.voice = null; fillVoices(); remember()
@@ -2025,9 +2301,27 @@ window.__voice = {
   recState: () => rec?.state ?? null,
   trackLive: () => stream?.getAudioTracks().map(t => ({ ready: t.readyState, enabled: t.enabled })),
   setLive, start, stopRec,
+  // Zeichner, die sonst nur der Ereignisstrom antriggert — zum Nachstellen
+  // ohne auf einen passenden Zug warten zu muessen.
+  zeigeTodos, zeigeStats, onTool, onSubagent,
   // Nachstellen ohne Neuladen: __voice.tune({ endSec: 1.4 })
   tune: o => live.node?.port.postMessage({ tune: o }),
   recalibrate: () => live.node?.port.postMessage({ recalibrate: true })
+}
+
+// Zum Schluss, wenn alle Zeichner definiert sind: setzeUiSprache faerbt auch
+// Listen und Zustaende nach.
+// Nach einem Neuladen mitten in der Session stehen die Zaehler sonst wieder
+// auf null, obwohl die Session weiterlaeuft.
+fetch('/api/stats', { headers: { 'x-voice-token': TOKEN } })
+  .then(r => r.ok ? r.json() : null)
+  .then(st => { if (st) { zeigeStats(st); sessionStart = st.startedAt || Date.now() } })
+  .catch(() => {})
+
+{
+  const gemerkt = localStorage.getItem('cv-lang')
+  if (gemerkt) $('#lang').value = gemerkt
+  setzeUiSprache(uiAus($('#lang').value))
 }
 
 setState('idle')

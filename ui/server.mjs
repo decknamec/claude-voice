@@ -191,6 +191,25 @@ async function transcribe (buf, conf) {
   } finally { await rm(dir, { recursive: true, force: true }) }
 }
 
+// Der Zweig steht in der Statusleiste. Billig genug, ihn nach jedem Zug neu
+// zu lesen: eine Datei, kein Prozess.
+function gitZweig () {
+  try {
+    let dir = CWD
+    for (let i = 0; i < 12; i++) {
+      const head = join(dir, '.git', 'HEAD')
+      if (existsSync(head)) {
+        const t = readFileSync(head, 'utf8').trim()
+        return t.startsWith('ref: ') ? t.slice(t.lastIndexOf('/') + 1) : t.slice(0, 7)
+      }
+      const oben = dirname(dir)
+      if (oben === dir) break
+      dir = oben
+    }
+  } catch {}
+  return ''
+}
+
 // ── Alte Verlaeufe ───────────────────────────────────────────────────
 // resume startet die Session zwar mit vollem Gedaechtnis, aber das Fenster
 // bleibt leer — man sieht nicht, worueber man geredet hat. Also den
@@ -261,7 +280,7 @@ let effort = null   // null = wie vom Modell vorgegeben
 // Session gleich an die Grenze laeuft.
 const leereStats = () => ({
   turns: 0, inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0,
-  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null
+  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null, zweig: ''
 })
 let stats = leereStats()
 
@@ -392,6 +411,7 @@ function startSession (conf, resumeId) {
           stats.apiMs += msg.duration_api_ms || 0
           stats.costUsd += msg.total_cost_usd || 0
           summeUsage(msg.usage)
+          stats.zweig = gitZweig()
           push('done', { subtype: msg.subtype, ms: msg.duration_ms })
           push('stats', stats)
           // Der Fuellstand kostet einen Kontrollaufruf, deshalb erst nach dem
@@ -554,6 +574,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/stats') {
+      stats.zweig = gitZweig()
       return json(res, 200, stats)
     }
 
@@ -582,6 +603,17 @@ const server = createServer(async (req, res) => {
             fehler: m.error || '',
             werkzeuge: (m.tools || []).map(t => t.name)
           }))
+        })
+      } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/commands') {
+      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      try {
+        const liste = await S.q.supportedCommands()
+        return json(res, 200, {
+          befehle: liste.map(c => ({ name: c.name, beschreibung: c.description,
+                                     hinweis: c.argumentHint || '' }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }

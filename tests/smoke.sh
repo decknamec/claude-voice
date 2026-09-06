@@ -128,6 +128,10 @@ t "keine doppelten CSS-Bloecke" \
   "[ \"\$(grep -c '^\\.keys{' '$REPO/ui/index.html')\" = 1 ]" \
   "eine Regel zweimal im Blatt heisst, ein Anker hat danebengegriffen"
 
+t "jede markierte Zeichenkette hat eine Uebersetzung" \
+  "node '$REPO/tests/i18n-coverage.js' '$REPO/ui/index.html'" \
+  "sonst bleibt beim Umschalten stumm Deutsch stehen"
+
 t "keine verwaisten CSS-Klassen" \
   "node '$REPO/tests/orphan-css.js' '$REPO/ui/index.html'" \
   "Regeln, deren Klasse es im Markup nicht mehr gibt, wirken stumm nicht mehr"

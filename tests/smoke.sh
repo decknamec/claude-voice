@@ -112,8 +112,8 @@ t "jedes \$('#id') hat sein Element im Markup" \
 # Vorher hing das Einklappen komplett in @media (max-width:1000px) — auf breiten
 # Fenstern gab es also gar keinen Weg, die Leiste wegzubekommen.
 t "Seitenleiste laesst sich in jeder Breite einklappen" \
-  "sed '/@media/q' '$REPO/ui/index.html' | grep -q 'data-side=.off.. main'" \
-  "die Einklapp-Regel darf nicht nur in einer Media-Query stehen"
+  "sed '/@media[^{]*width/q' '$REPO/ui/index.html' | grep -q 'data-side=.off.. main'" \
+  "die Einklapp-Regel darf nicht nur in einer Breiten-Query stehen"
 
 t "hidden schlaegt eigene display-Regeln" \
   "grep -q '\\[hidden\\]{display:none' '$REPO/ui/index.html'" \

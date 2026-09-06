@@ -338,6 +338,26 @@ body[data-noglow="an"] .ambient{display:none}
 body[data-wz="aus"] .msg.wz{display:none}
 
 /* MCP-Server: Name, Zustand, Anzahl der Werkzeuge. */
+/* Statustafel: zwei Spalten, Wert rechtsbuendig und in Ziffernbreite, damit
+   die Zahlen untereinander stehen. */
+.statuslist{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:11.5px}
+.statuslist dt{color:var(--fg-dim);white-space:nowrap}
+.statuslist dd{margin:0;color:var(--fg);text-align:right;overflow:hidden;
+               text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.statuslist .kopf{grid-column:1/-1;margin-top:8px;color:var(--fg-dim);opacity:.7;
+                  text-transform:uppercase;letter-spacing:.07em;font-size:10px}
+.statuslist .kopf:first-child{margin-top:0}
+.statuslist dd.aus{color:var(--err)}
+
+.sgroup textarea{
+  font:inherit; font-size:12.5px; color:var(--fg); background:var(--bg);
+  border:1px solid var(--line); border-radius:var(--r-field);
+  padding:8px 10px; width:100%; resize:vertical; min-height:56px;
+  transition:border-color var(--t-quick) var(--e);
+}
+.sgroup textarea:hover{border-color:var(--fg-dim)}
+.sgroup textarea:focus{outline:none;border-color:var(--accent)}
+
 .mcps{display:flex;flex-direction:column;gap:6px}
 .mcps .none{font-size:11.5px;color:var(--fg-dim);opacity:.7}
 .mcp{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--fg-dim)}
@@ -372,6 +392,40 @@ body[data-wz="aus"] .msg.wz{display:none}
 .cmd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .cmd .n{font-size:12px;color:var(--fg)}
 .cmd .b{font-size:11px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Git-Klappe: oeffnet nach oben, weil die Statusleiste am unteren Rand klebt. */
+.gitwrap{position:relative}
+.gitzahl{opacity:.65;font-size:10.5px}
+.gitpop{
+  position:absolute; bottom:calc(100% + 8px); left:0; z-index:20; width:250px;
+  border:1px solid var(--line); border-radius:var(--r-panel); background:var(--panel);
+  box-shadow:var(--shadow); padding:10px; display:flex; flex-direction:column; gap:8px;
+  animation:rise var(--t-std) var(--e-out) both;
+}
+.gitkopf{font-size:11px;color:var(--fg-dim)}
+.gitzweige{display:flex;flex-direction:column;gap:1px;max-height:190px;overflow-y:auto;margin:0 -4px}
+.gitzweig{
+  display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--r-field);
+  border:0;background:none;font:inherit;font-size:12px;color:var(--fg-label);
+  cursor:pointer;text-align:left;width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.gitzweig:hover{background:var(--accent-soft);color:var(--fg)}
+.gitzweig.jetzt{color:var(--fg);cursor:default}
+.gitzweig.jetzt::before{content:'●';font-size:8px;color:var(--accent)}
+.gitzweig:not(.jetzt)::before{content:'○';font-size:8px;opacity:.4}
+.gitneu{display:flex;gap:6px}
+.gitneu input{
+  flex:1;min-width:0;font:inherit;font-size:12px;color:var(--fg);background:var(--bg);
+  border:1px solid var(--line);border-radius:var(--r-field);padding:5px 8px;
+}
+.gitneu input:focus{outline:none;border-color:var(--accent)}
+.gitknoepfe{display:flex;gap:6px;border-top:1px solid var(--line);padding-top:8px}
+.gitknoepfe .mini{flex:1}
+.gitmeldung{font-size:11px;color:var(--fg-dim);white-space:pre-wrap;max-height:70px;overflow-y:auto}
+.gitmeldung.schief{color:var(--err)}
+.mini.danger{color:var(--err)}
+.mini[aria-busy="true"]{opacity:.5;pointer-events:none}
+
 .zw{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.5;
     stroke-linecap:round;flex:none;opacity:.75}
 
@@ -468,7 +522,10 @@ body[data-state="thinking"] .dots{opacity:1}
 .empty .sub{margin-top:7px;font-size:12.5px;opacity:.75;line-height:1.6}
 .empty b{color:var(--fg);font-weight:500}
 
-.log{width:100%;max-width:720px;display:flex;flex-direction:column;gap:12px;margin-top:26px}
+/* Neueste Nachricht oben. Die Reihenfolge im Dokument bleibt chronologisch,
+   nur die Anzeige dreht sich um — so muss man nicht nachscrollen. */
+.log{width:100%;max-width:720px;display:flex;flex-direction:column-reverse;
+     gap:var(--gap-feed,12px);margin-top:26px}
 .msg{
   border:1px solid var(--line);background:var(--panel);border-radius:var(--r-panel);
   padding:var(--pad-msg,12px 15px);box-shadow:var(--shadow);
@@ -719,6 +776,19 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
         <label class="check"><input type="checkbox" id="wrapwz">
           <span data-i18n>Befehle vollständig zeigen</span></label>
       </div>
+      <label><span data-i18n>Antwortstil</span><select id="stil">
+        <option value="standard" data-i18n>wie üblich</option>
+        <option value="knapp" data-i18n>knapp</option>
+        <option value="ausfuehrlich" data-i18n>ausführlich</option>
+        <option value="erklaerend" data-i18n>erklärend</option>
+        <option value="sachlich" data-i18n>sachlich</option>
+        <option value="locker" data-i18n>locker</option>
+        <option value="sokratisch" data-i18n>sokratisch</option>
+        <option value="eigen" data-i18n>eigener Stil…</option>
+      </select></label>
+      <label id="stileigen" hidden><span data-i18n>Eigener Stil</span>
+        <textarea id="stiltext" rows="3" data-i18n-ph
+          placeholder="Antworte immer zuerst mit dem Ergebnis, dann mit dem Weg dorthin."></textarea></label>
       <label><span data-i18n>Werkzeuge</span><select id="perm">
         <option value="default" data-i18n>fragt nach</option>
         <option value="acceptEdits" data-i18n>Edits ohne Rückfrage</option>
@@ -768,6 +838,11 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
     <details class="sgroup" id="grp-cmd">
       <summary><span data-i18n>Befehle</span><span class="badge" id="cmdcount">–</span></summary>
       <div class="gbody"><div class="cmds" id="cmds"></div></div>
+    </details>
+    <details class="sgroup" id="grp-status">
+      <summary><span data-i18n>Status</span><button class="mini" id="statusreload"
+               data-i18n-title title="Neu laden" data-i18n>aktualisieren</button></summary>
+      <div class="gbody"><dl class="statuslist" id="statuslist"></dl></div>
     </details>
     <details class="sgroup" id="grp-mcp">
       <summary><span data-i18n>MCP-Server</span><span class="badge" id="mcpcount">–</span></summary>
@@ -840,9 +915,26 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
       <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
     </section>
     <footer class="status" id="status">
-      <span class="si" id="stZweigBox" hidden data-i18n-title title="Git-Zweig im Arbeitsverzeichnis">
-        <svg viewBox="0 0 16 16" class="zw" aria-hidden="true"><path d="M4 2v8m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8-8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4c0 3-3 3-5 4"/></svg>
-        <b id="stZweig"></b></span>
+      <div class="gitwrap">
+        <button class="si" id="stZweigBox" hidden aria-expanded="false"
+                data-i18n-title title="Git-Zweig · klicken für Wechseln, Holen, Ziehen, Schieben">
+          <svg viewBox="0 0 16 16" class="zw" aria-hidden="true"><path d="M4 2v8m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8-8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4c0 3-3 3-5 4"/></svg>
+          <b id="stZweig"></b><span class="gitzahl" id="stGitZahl"></span></button>
+        <div class="gitpop" id="gitpop" hidden>
+          <div class="gitkopf"><b id="gitlage"></b></div>
+          <div class="gitzweige" id="gitzweige"></div>
+          <form class="gitneu" id="gitneu">
+            <input id="gitname" data-i18n-ph placeholder="neuer Zweig" autocomplete="off" spellcheck="false">
+            <button type="submit" class="mini" data-i18n>anlegen</button>
+          </form>
+          <div class="gitknoepfe">
+            <button class="mini" id="gitfetch" data-i18n>holen</button>
+            <button class="mini" id="gitpull" data-i18n>ziehen</button>
+            <button class="mini danger" id="gitpush" data-i18n>schieben</button>
+          </div>
+          <div class="gitmeldung" id="gitmeldung"></div>
+        </div>
+      </div>
       <span class="si" data-i18n-title title="Laufzeit dieser Session"><b id="stDauer">0:00</b></span>
       <span class="si" data-i18n-title title="Abgeschlossene Züge"><b id="stTurns">0</b> <span data-i18n>Züge</span></span>
       <span class="si" data-i18n-title title="Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen">
@@ -869,7 +961,10 @@ const $ = s => document.querySelector(s)
                   'stCtx','stCtxFill','stCtxBar','stCtxBtn','stCost','stMode',
                   'agents','agcount','mcps','mcpcount','showwz','wrapwz',
                   'todos','todocount','grp-todo','cmds','cmdcount','grp-cmd',
-                  'stZweig','stZweigBox',
+                  'stZweig','stZweigBox','stil','stileigen','stiltext',
+                  'statuslist','statusreload','grp-status','gitpop','gitlage',
+                  'gitzweige','gitneu','gitname','gitfetch','gitpull','gitpush',
+                  'gitmeldung','stGitZahl',
                   'theme','swatches','fsize','fsizeout','dense','radius','calm',
                   'noglow','mute','rate','rateout',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
@@ -965,6 +1060,33 @@ const EN = {
   'Plant':'Plans', 'Ändert Notebook':'Edits notebook', 'denkt':'thinking',
   // Meldungen
   'Session':'Session', 'Modus':'Tool mode', 'Kontext':'Context', 'Fortgesetzt':'Resumed', 'Du':'You',
+  'Antwortstil':'Response style', 'wie üblich':'as usual', 'knapp':'concise',
+  'ausführlich':'thorough', 'erklärend':'explanatory', 'sachlich':'matter-of-fact',
+  'locker':'casual', 'sokratisch':'socratic', 'eigener Stil…':'custom style…',
+  'eigener Stil':'custom style', 'Eigener Stil':'Custom style',
+  'Antworte immer zuerst mit dem Ergebnis, dann mit dem Weg dorthin.':
+    'Always give the result first, then how you got there.',
+  '. Session neu gestartet, der Stil gilt ab jetzt.':
+    '. Started a new session, the style applies from now on.',
+  'Status':'Status', 'Arbeit':'Work',
+  'Git-Zweig · klicken für Wechseln, Holen, Ziehen, Schieben':
+    'Git branch · click to switch, fetch, pull, push',
+  'neuer Zweig':'new branch', 'anlegen':'create', 'holen':'fetch', 'ziehen':'pull',
+  'schieben':'push', 'wirklich schieben?':'really push?', 'läuft…':'running…',
+  'erledigt':'done', 'voraus':'ahead', 'zurück':'behind', 'geändert':'changed',
+  'kein Gegenstück am Server':'no upstream',
+  'Konto':'Account', 'E-Mail':'Email', 'Organisation':'Organisation', 'Abo':'Plan',
+  'Schlüsselquelle':'Key source', 'Plangrenzen':'Plan limits',
+  '5 Stunden':'5 hours', '7 Tage':'7 days', '7 Tage Opus':'7 days Opus',
+  '7 Tage Sonnet':'7 days Sonnet',
+  'für diesen Zugang nicht anwendbar':'not applicable for this access', 'Verzeichnis':'Directory', 'Zweig':'Branch',
+  'Läuft':'Running', 'ja':'yes', 'nein':'no', 'Kennung':'Id', 'noch keine':'none yet',
+  'Laufzeit':'Runtime', 'Verbrauch':'Usage', 'Token ein':'Tokens in',
+  'Token aus':'Tokens out', 'Kosten':'Cost', 'Spracherkennung':'Speech recognition',
+  'Sprachausgabe':'Speech output', 'Backend':'Backend', 'Server':'Server',
+  'eigener Prozess':'own process', 'fremder Prozess':'foreign process', 'aus':'off',
+  'Laufzeitumgebung':'Runtime environment', 'Agent-SDK':'Agent SDK', 'Port':'Port',
+  'unbekannt':'unknown', 'Node':'Node',
   'Aufgaben':'Tasks', 'Befehle':'Commands', 'Git-Zweig im Arbeitsverzeichnis':'Git branch of the working directory',
   'Keine Befehle in dieser Session.':'No commands in this session.',
   'nicht lesbar':'not readable', 'Stimme aus Konfig':'Voice from config',
@@ -1016,6 +1138,10 @@ function setzeUiSprache (code) {
     if (el.dataset.quelleTitle === undefined) el.dataset.quelleTitle = el.title
     el.title = t(el.dataset.quelleTitle)
   }
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) {
+    if (el.dataset.quellePh === undefined) el.dataset.quellePh = el.placeholder
+    el.placeholder = t(el.dataset.quellePh)
+  }
   for (const el of document.querySelectorAll('[data-i18n-aria]')) {
     if (el.dataset.quelleAria === undefined) el.dataset.quelleAria = el.getAttribute('aria-label')
     el.setAttribute('aria-label', t(el.dataset.quelleAria))
@@ -1027,6 +1153,7 @@ function setzeUiSprache (code) {
   zeichneAgents()
   if ($('#grp-mcp').open) ladeMcp()
   if ($('#grp-cmd').open) ladeBefehle()
+  if ($('#grp-status').open) ladeStatus()
   if (BACKENDS.length) { fuelleBackends(); fillVoices() }
   ladeVerlauf()
 }
@@ -1037,6 +1164,7 @@ const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…
                waiting:'Wartet auf deine Freigabe' }
 
 let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
+let turnLaeuft = false   // laeuft gerade ein Zug? Siehe neuBewerten()
 // Muss vor draw() stehen: die Zeichenschleife startet sofort und liest live.on.
 const live = { on:false, node:null, source:null, floor:0.012, level:0 }
 
@@ -1120,12 +1248,13 @@ function add (who, text, cls, meta) {
   el.querySelector('.body').textContent = text
   if (meta) el.querySelector('.meta').textContent = meta
   const feed = $('#feed')
-  // Nur nachführen, wenn der Nutzer ohnehin unten steht. Wer weiter oben liest,
-  // will nicht bei jeder Antwort weggerissen werden.
-  const untenDran = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120
+  // Nur nachführen, wenn der Nutzer ohnehin oben steht. Wer weiter unten liest,
+  // will nicht bei jeder Antwort weggerissen werden. Oben, weil die Anzeige
+  // umgedreht ist: das Neueste liegt am Anfang.
+  const obenDran = feed.scrollTop < 120
   log.append(el)
   zeigeLeer()
-  if (untenDran) el.scrollIntoView({ behavior:'smooth', block:'end' })
+  if (obenDran) feed.scrollTo({ top: 0, behavior: 'smooth' })
   return el
 }
 
@@ -1281,6 +1410,7 @@ async function finish () {
 
     // Ab hier übernimmt der Ereignisstrom: Text, Freigaben und das Ende des
     // Turns kommen über SSE, nicht als Antwort auf diesen Aufruf.
+    turnLaeuft = true
     setState('thinking')
     await post('/api/say', JSON.stringify({ text: said }), 'application/json')
   } catch (e) {
@@ -1293,6 +1423,7 @@ async function schickeText (text, etikett) {
   busy = true
   try {
     add(t('Du'), text, 'me', etikett || '')
+    turnLaeuft = true
     setState('thinking')
     await post('/api/say', JSON.stringify({ text }), 'application/json')
   } catch (e) { showError(e, e.code); busy = false }
@@ -1323,7 +1454,7 @@ $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
   stopAudio()
   log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
-  stepHide(); thinkReset(); agents.clear(); zeichneAgents(); zeigeTodos([])
+  stepHide(); thinkReset(); agents.clear(); zeichneAgents(); zeigeTodos([]); turnLaeuft = false
   sessionStart = Date.now()
   zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
   $('#stCtx').textContent = '–'; $('#stCtxFill').style.width = '0%'
@@ -1366,13 +1497,30 @@ function playNext () {
   player.el.playbackRate = tempo
   player.el.play().catch(() => { player.playing = false; playNext() })
 }
-player.el.addEventListener('ended', () => { player.playing = false; playNext() })
-player.el.addEventListener('error', () => { player.playing = false; playNext() })
+player.el.addEventListener('ended', () => { player.playing = false; playNext(); neuBewerten() })
+player.el.addEventListener('error', () => { player.playing = false; playNext(); neuBewerten() })
+
+// Der sichtbare Zustand haengt an zwei Dingen, die unabhaengig voneinander
+// enden: dem Zug (kommt ueber SSE) und der Wiedergabe im Browser. Ein
+// einmaliger Poll nach "done" trifft die Wiedergabe mal davor, mal danach —
+// gemessen sprang die Anzeige auf "Bereit", waehrend noch geredet wurde, und
+// blieb ein andermal auf "Spricht" haengen. Also nach jeder Aenderung neu
+// bewerten statt einmal zu raten.
+// Zustaende, die der Nutzer selbst ausgeloest hat und die niemand ueberfahren darf.
+const EIGENER_ZUSTAND = new Set(['listening', 'transcribing', 'waiting', 'error', 'off'])
+
+function neuBewerten () {
+  if (EIGENER_ZUSTAND.has(state)) return
+  if (speaking()) { if (state !== 'speaking') setState('speaking'); return }
+  if (turnLaeuft) { if (state !== 'thinking' && state !== 'speaking') setState('thinking'); return }
+  if (state !== 'idle') setState('idle')
+}
 
 function stopAudio () {
   player.queue.length = 0
   player.el.pause(); player.el.removeAttribute('src'); player.el.load()
   player.playing = false
+  neuBewerten()
 }
 const speaking = () => player.playing || player.queue.length > 0
 
@@ -1581,7 +1729,7 @@ function trennerZeile (text) {
   el.append(Object.assign(document.createElement('span'), { textContent: text }))
   log.append(el)
   zeigeLeer()
-  el.scrollIntoView({ block: 'end' })
+  $('#feed').scrollTo({ top: 0 })
 }
 
 async function fortsetzen (id, titel) {
@@ -1589,7 +1737,7 @@ async function fortsetzen (id, titel) {
     const r = await post('/api/resume', JSON.stringify({ id }), 'application/json')
     stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); stepHide(); thinkReset()
     agents.clear(); zeichneAgents(); zeigeTodos([])
-    liveBubbleEl = null; busy = false; setState('idle')
+    liveBubbleEl = null; busy = false; turnLaeuft = false; setState('idle')
     sessionStart = Date.now()
     zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
     zeigeAltenVerlauf(r.verlauf, titel)
@@ -1636,8 +1784,9 @@ function zeigeStats (st) {
   $('#stCost').textContent = st.costUsd
     ? st.costUsd.toFixed(st.costUsd < 1 ? 3 : 2).replace('.', ',') + ' $' : '–'
   if (st.ctx) zeigeKontext(st.ctx)
-  $('#stZweigBox').hidden = !st.zweig
-  $('#stZweig').textContent = st.zweig || ''
+  // Nach jedem Zug kann sich der Zweig geaendert haben, etwa weil Claude
+  // selbst gewechselt hat.
+  if (st.zweig !== undefined) ladeGit()
 }
 
 function zeigeKontext (c) {
@@ -1682,6 +1831,185 @@ function zeigeTodos (todos) {
     box.append(li)
   }
 }
+
+// ── Git ──────────────────────────────────────────────────────────────
+// Zweig wechseln, anlegen, holen, ziehen, schieben. Der Server ruft git ohne
+// Shell auf; hier geht es nur um die Anzeige und darum, dass nichts doppelt
+// losgeschickt wird.
+let gitLage = null
+
+function zeichneGit () {
+  const l = gitLage
+  $('#stZweigBox').hidden = !l?.repo
+  if (!l?.repo) return
+  $('#stZweig').textContent = l.zweig
+  const teile = []
+  if (l.vor) teile.push('↑' + l.vor)
+  if (l.zurueck) teile.push('↓' + l.zurueck)
+  if (l.geaendert) teile.push('•' + l.geaendert)
+  $('#stGitZahl').textContent = teile.join(' ')
+  $('#gitlage').textContent = l.hatOben
+    ? `${l.vor} ${t('voraus')}, ${l.zurueck} ${t('zurück')}, ${l.geaendert} ${t('geändert')}`
+    : `${t('kein Gegenstück am Server')}, ${l.geaendert} ${t('geändert')}`
+  const box = $('#gitzweige')
+  box.innerHTML = ''
+  for (const z of l.zweige) {
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'gitzweig' + (z === l.zweig ? ' jetzt' : '')
+    b.append(Object.assign(document.createElement('span'), { textContent: z }))
+    if (z !== l.zweig) b.addEventListener('click', () => gitTun('wechseln', z))
+    box.append(b)
+  }
+}
+
+async function ladeGit () {
+  try {
+    gitLage = await fetch('/api/git', { headers: { 'x-voice-token': TOKEN } }).then(r => r.json())
+    zeichneGit()
+  } catch { /* kein Repo oder Server weg — die Anzeige bleibt einfach leer */ }
+}
+
+let gitLaeuft = false
+async function gitTun (aktion, name) {
+  if (gitLaeuft) return
+  gitLaeuft = true
+  const m = $('#gitmeldung')
+  m.className = 'gitmeldung'
+  m.textContent = t('läuft…')
+  for (const b of $('#gitpop').querySelectorAll('.mini')) b.setAttribute('aria-busy', 'true')
+  try {
+    const r = await post('/api/git', JSON.stringify({ aktion, name }), 'application/json')
+    gitLage = r.lage; zeichneGit()
+    m.className = 'gitmeldung' + (r.ok ? '' : ' schief')
+    m.textContent = r.meldung || (r.ok ? t('erledigt') : t('fehlgeschlagen'))
+    if (r.ok && (aktion === 'wechseln' || aktion === 'neu')) $('#gitname').value = ''
+  } catch (e) {
+    m.className = 'gitmeldung schief'
+    m.textContent = e.message
+  } finally {
+    gitLaeuft = false
+    for (const b of $('#gitpop').querySelectorAll('.mini')) b.removeAttribute('aria-busy')
+  }
+}
+
+$('#stZweigBox').addEventListener('click', e => {
+  e.stopPropagation()
+  const auf = $('#gitpop').hidden
+  $('#gitpop').hidden = !auf
+  $('#stZweigBox').setAttribute('aria-expanded', String(auf))
+  if (auf) { ladeGit(); $('#gitmeldung').textContent = '' }
+})
+$('#gitpop').addEventListener('click', e => e.stopPropagation())
+addEventListener('click', () => {
+  if ($('#gitpop').hidden) return
+  $('#gitpop').hidden = true
+  $('#stZweigBox').setAttribute('aria-expanded', 'false')
+})
+$('#gitneu').addEventListener('submit', e => {
+  e.preventDefault()
+  const n = $('#gitname').value.trim()
+  if (n) gitTun('neu', n)
+})
+$('#gitfetch').addEventListener('click', () => gitTun('fetch'))
+$('#gitpull').addEventListener('click', () => gitTun('pull'))
+// Schieben verlaesst den Rechner. Ein zweiter Klick innerhalb weniger
+// Sekunden bestaetigt — ein Versehen soll nicht gleich veroeffentlichen.
+let pushBereit = false
+$('#gitpush').addEventListener('click', () => {
+  const b = $('#gitpush')
+  if (!pushBereit) {
+    pushBereit = true
+    b.textContent = t('wirklich schieben?')
+    setTimeout(() => { pushBereit = false; b.textContent = t('schieben') }, 5000)
+    return
+  }
+  pushBereit = false
+  b.textContent = t('schieben')
+  gitTun('push')
+})
+
+// ── Statustafel ──────────────────────────────────────────────────────
+// Dasselbe, was /status im Terminal zeigt: woran die Session haengt, was sie
+// verbraucht hat und ob die Bausteine ueberhaupt laufen.
+async function ladeStatus () {
+  const box = $('#statuslist')
+  try {
+    const d = await fetch('/api/status', { headers: { 'x-voice-token': TOKEN } }).then(r => r.json())
+    box.innerHTML = ''
+    const kopf = txt => box.append(Object.assign(document.createElement('dt'),
+      { className: 'kopf', textContent: t(txt) }))
+    const zeile = (k, v, schlecht) => {
+      if (v === null || v === undefined || v === '') return
+      box.append(Object.assign(document.createElement('dt'), { textContent: t(k) }))
+      const dd = document.createElement('dd')
+      dd.textContent = String(v); dd.title = String(v)
+      if (schlecht) dd.className = 'aus'
+      box.append(dd)
+    }
+    const k = d.verbrauch.kontext
+    kopf('Arbeit')
+    zeile('Verzeichnis', d.arbeit.cwd.replace(/^\/Users\/[^/]+/, '~'))
+    zeile('Zweig', d.arbeit.zweig)
+    kopf('Session')
+    zeile('Läuft', t(d.session.laeuft ? 'ja' : 'nein'), !d.session.laeuft)
+    zeile('Kennung', d.session.id ? d.session.id.slice(0, 8) : t('noch keine'))
+    zeile('Modell', d.session.modell ? prettyModel(d.session.modell) : t('wie konfiguriert'))
+    zeile('Denktiefe', d.session.denktiefe || t('wie konfiguriert'))
+    zeile('Werkzeuge', t(PERM[d.session.werkzeuge] || d.session.werkzeuge))
+    zeile('Antwortstil', t(STIL_NAME[d.session.stil] || d.session.stil))
+    zeile('Laufzeit', dauerText(d.session.laufzeitMs))
+    kopf('Verbrauch')
+    zeile('Züge', d.verbrauch.zuege)
+    zeile('Token ein', zahl(d.verbrauch.ein + d.verbrauch.cache))
+    zeile('Token aus', zahl(d.verbrauch.aus))
+    zeile('Kosten', d.verbrauch.kosten ? d.verbrauch.kosten.toFixed(3).replace('.', ',') + ' $' : '0 $')
+    if (k) zeile('Kontext', `${Math.round(k.prozent)} % · ${zahl(k.tokens)}/${zahl(k.max)}`)
+    kopf('Spracherkennung')
+    zeile('Modell', d.spracherkennung.modell.split('/').pop(), !d.spracherkennung.vorhanden)
+    zeile('Server', t(d.spracherkennung.server), d.spracherkennung.server === 'aus')
+    kopf('Sprachausgabe')
+    zeile('Backend', d.sprachausgabe.backend)
+    zeile('Stimme', d.sprachausgabe.stimme)
+    if (d.konto) {
+      kopf('Konto')
+      zeile('E-Mail', d.konto.email)
+      zeile('Organisation', d.konto.organization)
+      zeile('Abo', d.konto.subscriptionType)
+      zeile('Schlüsselquelle', d.konto.apiKeySource)
+    }
+    const rl = d.limits?.rate_limits
+    if (d.limits?.rate_limits_available && rl) {
+      kopf('Plangrenzen')
+      const fenster = [['5 Stunden', rl.five_hour], ['7 Tage', rl.seven_day],
+                       ['7 Tage Opus', rl.seven_day_opus], ['7 Tage Sonnet', rl.seven_day_sonnet]]
+      for (const [name, f] of fenster) {
+        if (!f || f.utilization == null) continue
+        const bis = f.resets_at ? ' · ' + new Date(f.resets_at).toLocaleTimeString(uiSprache,
+          { hour: '2-digit', minute: '2-digit' }) : ''
+        zeile(name, Math.round(f.utilization) + ' %' + bis, f.utilization >= 90)
+      }
+    } else if (d.limits) {
+      kopf('Plangrenzen')
+      zeile('Status', t('für diesen Zugang nicht anwendbar'))
+    }
+    kopf('Laufzeitumgebung')
+    zeile('Node', d.laufzeit.node)
+    zeile('Agent-SDK', d.laufzeit.sdk || t('unbekannt'))
+    zeile('Port', d.laufzeit.port)
+  } catch (e) {
+    box.innerHTML = ''
+    box.append(Object.assign(document.createElement('dt'),
+      { className: 'kopf', textContent: t('nicht lesbar') + ': ' + e.message }))
+  }
+}
+const STIL_NAME = { standard:'wie üblich', knapp:'knapp', ausfuehrlich:'ausführlich',
+                    erklaerend:'erklärend', sachlich:'sachlich', locker:'locker',
+                    sokratisch:'sokratisch', eigen:'eigener Stil' }
+$('#grp-status').addEventListener('toggle', () => { if ($('#grp-status').open) ladeStatus() })
+$('#statusreload').addEventListener('click', e => {
+  e.preventDefault(); e.stopPropagation(); ladeStatus()
+})
 
 // ── Slash-Befehle ────────────────────────────────────────────────────
 async function ladeBefehle () {
@@ -2092,6 +2420,25 @@ function modusWeiter (rueckwaerts) {
 }
 $('#stMode').addEventListener('click', () => modusWeiter())
 
+// Antwortstil. Haengt am Systemprompt, also startet die Session neu — mit
+// resume bleibt der bisherige Faden erhalten.
+async function setzeStil (stil, text) {
+  $('#stileigen').hidden = stil !== 'eigen'
+  try {
+    const r = await post('/api/style', JSON.stringify({ stil, text }), 'application/json')
+    localStorage.setItem('cv-stil', stil)
+    if (stil === 'eigen') localStorage.setItem('cv-stiltext', text || '')
+    const name = $('#stil').options[$('#stil').selectedIndex].text
+    toast(t('Antwortstil'), name + (r.restarted ? t('. Session neu gestartet, der Stil gilt ab jetzt.') : ''), '')
+  } catch (err) { showError(err, err.code) }
+}
+$('#stil').addEventListener('change', e => setzeStil(e.target.value, $('#stiltext').value))
+// Erst beim Verlassen des Feldes anwenden, sonst startet die Session bei
+// jedem Tastendruck neu.
+$('#stiltext').addEventListener('change', () => {
+  if ($('#stil').value === 'eigen') setzeStil('eigen', $('#stiltext').value)
+})
+
 $('#perm').addEventListener('change', async e => {
   const mode = e.target.value
   try {
@@ -2127,7 +2474,7 @@ es.addEventListener('delta', e => {
   el.querySelector('.body').textContent += text
   stepHide(); thinkReset()
   if (state !== 'speaking') setState('speaking')
-  el.scrollIntoView({ behavior:'smooth', block:'end' })
+  $('#feed').scrollTo({ top: 0, behavior: 'smooth' })
 })
 
 es.addEventListener('message', e => {
@@ -2143,8 +2490,8 @@ es.addEventListener('done', () => {
   if (liveBubbleEl) { liveBubbleEl.classList.remove('live'); liveBubbleEl = null }
   stepHide(); thinkReset()
   busy = false
-  const settle = () => { if (!speaking()) setState('idle'); else setTimeout(settle, 200) }
-  settle()
+  turnLaeuft = false
+  neuBewerten()
 })
 
 es.addEventListener('error', e => {
@@ -2152,7 +2499,7 @@ es.addEventListener('error', e => {
     const { message } = JSON.parse(e.data)
     showError(new Error(message))
   } catch {}   // Verbindungsabbrüche kommen ohne data — EventSource verbindet selbst neu
-  busy = false
+  busy = false; turnLaeuft = false; neuBewerten()
 })
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
@@ -2163,6 +2510,7 @@ es.addEventListener('stats', e => {
   // ersten Zug aufklappt, sah sonst dauerhaft den Platzhalter.
   if ($('#grp-mcp').open && $('#mcpcount').textContent === '–') ladeMcp()
   if ($('#grp-cmd').open && $('#cmdcount').textContent === '–') ladeBefehle()
+  if ($('#grp-status').open) ladeStatus()
 })
 es.addEventListener('subagent', e => onSubagent(JSON.parse(e.data)))
 // Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
@@ -2172,12 +2520,12 @@ es.addEventListener('step', e => {
   stepShow(t(TOOLVERB[name] || name) + '…')
 })
 
-es.addEventListener('audio', e => { player.queue.push(JSON.parse(e.data).id); playNext() })
+es.addEventListener('audio', e => { player.queue.push(JSON.parse(e.data).id); playNext(); neuBewerten() })
 es.addEventListener('audio-stop', stopAudio)
 
 es.addEventListener('state', e => {
   const { state: st } = JSON.parse(e.data)
-  if (st === 'idle') { setState('idle'); busy = false }
+  if (st === 'idle') { busy = false; turnLaeuft = false; neuBewerten() }
 })
 
 // Freigabe: der Server hält den Tool-Aufruf an, bis hier geantwortet wird.
@@ -2205,7 +2553,7 @@ es.addEventListener('permission', e => {
   el.querySelector('.no').addEventListener('click', () => answer('deny'))
   log.append(el)
   zeigeLeer()
-  el.scrollIntoView({ behavior:'smooth', block:'end' })
+  $('#feed').scrollTo({ top: 0, behavior: 'smooth' })
 })
 
 // Abbruch: hält Sprachausgabe und laufenden Turn an. Das ist das Barge-in.
@@ -2317,6 +2665,18 @@ fetch('/api/stats', { headers: { 'x-voice-token': TOKEN } })
   .then(r => r.ok ? r.json() : null)
   .then(st => { if (st) { zeigeStats(st); sessionStart = st.startedAt || Date.now() } })
   .catch(() => {})
+
+{
+  const st = localStorage.getItem('cv-stil')
+  if (st) {
+    $('#stil').value = st
+    $('#stiltext').value = localStorage.getItem('cv-stiltext') || ''
+    $('#stileigen').hidden = st !== 'eigen'
+    // Nur setzen, wenn er vom Standard abweicht — sonst startet jede neu
+    // geladene Seite die Session ohne Not neu.
+    if (st !== 'standard') setzeStil(st, $('#stiltext').value)
+  }
+}
 
 {
   const gemerkt = localStorage.getItem('cv-lang')

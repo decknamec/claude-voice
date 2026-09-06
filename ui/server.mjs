@@ -274,6 +274,21 @@ let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
 let modelOverride = null
 let lang = 'de'
 let effort = null   // null = wie vom Modell vorgegeben
+let stil = 'standard'      // wie Claude antwortet
+let stilText = ''          // frei formulierter Stil, wenn stil === 'eigen'
+
+// Antwortstile. Der Text wird an den Systemprompt gehaengt, gilt also fuer die
+// ganze Session — ein Wechsel startet sie neu, mit resume bleibt der Faden.
+const STILE = {
+  standard: '',
+  knapp: 'Fasse dich so kurz wie moeglich: ein bis zwei Saetze, keine Einleitung, keine Zusammenfassung am Ende.',
+  ausfuehrlich: 'Antworte ausfuehrlicher als noetig waere: nenne den Grund, eine Alternative und woran es scheitern koennte.',
+  erklaerend: 'Erklaere so, dass es jemand ohne Vorwissen versteht. Fachbegriffe beim ersten Auftauchen in einem Halbsatz erklaeren.',
+  sachlich: 'Antworte nuechtern und ohne Floskeln. Kein Lob, keine Einleitungssaetze, keine Rueckfragen aus Hoeflichkeit.',
+  locker: 'Antworte locker und gespraechig, so wie man es einem Kollegen im Nebenzimmer zurufen wuerde.',
+  sokratisch: 'Gib die Antwort nicht sofort. Stelle zuerst eine Rueckfrage, die den Kern trifft, und leite dann hin.'
+}
+const stilPrompt = () => stil === 'eigen' ? stilText.slice(0, 800) : (STILE[stil] || '')
 
 // Was Claude Code im Terminal in der Statuszeile zeigt: Dauer, Tokens, Kosten,
 // Fuellstand des Kontextfensters. Ohne das ist nicht einzuschaetzen, ob eine
@@ -326,7 +341,9 @@ function startSession (conf, resumeId) {
       ...(effort ? { effort } : {}),
       includePartialMessages: true,
       ...((modelOverride || conf.CLAUDE_MODEL) ? { model: modelOverride || conf.CLAUDE_MODEL } : {}),
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT },
+      systemPrompt: { type: 'preset', preset: 'claude_code',
+                      append: [PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT, stilPrompt()]
+                                .filter(Boolean).join(' ') },
       // Hier hängt die ganze Freigabe-Mechanik dran: das Promise bleibt offen,
       // bis der Nutzer in der UI entschieden hat.
       canUseTool: (toolName, toolInput, { signal }) => new Promise(resolve => {
@@ -435,6 +452,53 @@ function startSession (conf, resumeId) {
 
   return S
 }
+
+// Neustart derselben Session. Der Systemprompt steht beim Start fest, also
+// braucht jede Aenderung daran eine neue Session — resume haelt den Faden.
+async function neuStarten (conf) {
+  if (!S) return false
+  const alte = S.sessionId
+  await stopSpeech()
+  try { S.q.close() } catch {}
+  S = null
+  startSession(conf, alte)
+  return true
+}
+
+// ── Git ──────────────────────────────────────────────────────────────
+// Ohne Shell: git bekommt seine Argumente als Feld, damit ein Zweigname mit
+// Semikolon nichts anrichten kann.
+function git (args, ms = 20000) {
+  return new Promise(resolve => {
+    const proc = spawn('git', args, { cwd: CWD, stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = '', err = ''
+    const stop = setTimeout(() => { proc.kill('SIGKILL'); resolve({ code: 124, out, err: 'Zeitüberschreitung' }) }, ms)
+    proc.stdout.on('data', d => { out += d })
+    proc.stderr.on('data', d => { err += d })
+    proc.on('close', code => { clearTimeout(stop); resolve({ code, out: out.trim(), err: err.trim() }) })
+    proc.on('error', e => { clearTimeout(stop); resolve({ code: 127, out: '', err: String(e.message) }) })
+  })
+}
+
+async function gitLage () {
+  const zweig = gitZweig()
+  if (!zweig) return { repo: false }
+  const [zweige, kurz, oben] = await Promise.all([
+    git(['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', 'refs/heads/']),
+    git(['status', '--porcelain']),
+    git(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'])
+  ])
+  const [vor, zurueck] = (oben.code === 0 ? oben.out.split(/\s+/) : ['0', '0']).map(Number)
+  return {
+    repo: true, zweig,
+    zweige: zweige.code === 0 ? zweige.out.split('\n').filter(Boolean).slice(0, 40) : [],
+    geaendert: kurz.code === 0 && kurz.out ? kurz.out.split('\n').length : 0,
+    vor: vor || 0, zurueck: zurueck || 0,
+    hatOben: oben.code === 0
+  }
+}
+
+const ZWEIGNAME = /^[A-Za-z0-9._\/-]{1,120}$/
 
 // ── HTTP ─────────────────────────────────────────────────────────────
 const body = req => new Promise((resolve, reject) => {
@@ -573,6 +637,74 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { verlauf })
     }
 
+    // Das, was /status im Terminal zeigt, an einer Stelle gebuendelt.
+    if (req.method === 'GET' && url.pathname === '/api/git') {
+      return json(res, 200, await gitLage())
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/git') {
+      const { aktion, name } = JSON.parse((await body(req)).toString('utf8'))
+      if (!gitZweig()) return json(res, 409, { error: 'kein Git-Repository' })
+      let r
+      if (aktion === 'wechseln' || aktion === 'neu') {
+        if (!ZWEIGNAME.test(String(name || ''))) return json(res, 400, { error: 'ungültiger Zweigname' })
+        r = await git(aktion === 'neu' ? ['switch', '-c', name] : ['switch', name])
+      } else if (aktion === 'fetch') {
+        r = await git(['fetch', '--all', '--prune'], 60000)
+      } else if (aktion === 'pull') {
+        // --ff-only: ein Merge-Konflikt mitten in einer Sprachsitzung waere
+        // nicht zu bedienen. Lieber sauber scheitern.
+        r = await git(['pull', '--ff-only'], 60000)
+      } else if (aktion === 'push') {
+        r = await git(['push'], 60000)
+      } else {
+        return json(res, 400, { error: 'unbekannte Aktion' })
+      }
+      const lage = await gitLage()
+      if (r.code !== 0) return json(res, 200, { ok: false, meldung: r.err || r.out || 'fehlgeschlagen', lage })
+      return json(res, 200, { ok: true, meldung: r.out || r.err || '', lage })
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/status') {
+      let sdk = ''
+      try {
+        sdk = JSON.parse(readFileSync(join(HERE, 'node_modules', '@anthropic-ai',
+          'claude-agent-sdk', 'package.json'), 'utf8')).version
+      } catch {}
+      return json(res, 200, {
+        arbeit: { cwd: CWD, zweig: gitZweig() },
+        session: {
+          id: S?.sessionId || null,
+          laeuft: !!S,
+          modell: S?.model || modelOverride || conf.CLAUDE_MODEL || null,
+          denktiefe: effort || null,
+          werkzeuge: permMode || conf.PERMISSION_MODE,
+          sprache: lang,
+          stil,
+          laufzeitMs: Date.now() - stats.startedAt
+        },
+        verbrauch: {
+          zuege: stats.turns, ein: stats.inTok, aus: stats.outTok,
+          cache: stats.cacheRead, kosten: stats.costUsd,
+          kontext: stats.ctx
+        },
+        spracherkennung: {
+          modell: conf.MODEL,
+          vorhanden: existsSync(conf.MODEL),
+          server: whisper.ready ? (whisper.owned ? 'eigener Prozess' : 'fremder Prozess') : 'aus',
+          port: whisper.port
+        },
+        sprachausgabe: { backend: conf.TTS_BACKEND, stimme: conf.VOICE },
+        laufzeit: { node: process.version, sdk, pid: process.pid, port: PORT },
+        // Konto und Plangrenzen kommen aus der laufenden Session. Die
+        // Nutzungsabfrage ist im SDK ausdruecklich als instabil markiert,
+        // deshalb faellt sie im Fehlerfall einfach weg.
+        konto: S ? await S.q.accountInfo().catch(() => null) : null,
+        limits: S ? await S.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(
+          { skipBehaviors: true }).catch(() => null) : null
+      })
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/stats') {
       stats.zweig = gitZweig()
       return json(res, 200, stats)
@@ -632,6 +764,19 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true, model: modelOverride, applied: !!S })
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/style') {
+      const { stil: st, text } = JSON.parse((await body(req)).toString('utf8'))
+      if (st !== 'eigen' && !(st in STILE)) return json(res, 400, { error: 'unbekannter Stil' })
+      stil = st
+      if (st === 'eigen') stilText = String(text || '')
+      const restarted = await neuStarten(conf)
+      return json(res, 200, { ok: true, stil, restarted })
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/style') {
+      return json(res, 200, { stil, text: stilText, stile: Object.keys(STILE) })
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/effort') {
       const { effort: e } = JSON.parse((await body(req)).toString('utf8'))
       const allowed = [null, '', 'low', 'medium', 'high', 'xhigh', 'max']
@@ -648,9 +793,9 @@ const server = createServer(async (req, res) => {
       if (!WHISPER_LANG[l]) return json(res, 400, { error: 'unbekannte Sprache' })
       lang = l
       // Die Erkennung stellt sofort um; der Antwortsprache-Prompt hängt an der
-      // Session, also muss die neu starten.
-      let restarted = false
-      if (S) { await stopSpeech(); try { S.q.close() } catch {}; S = null; restarted = true }
+      // Session, also muss die neu starten. Mit resume behaelt sie den Faden —
+      // vorher war das Gespraech nach einem Sprachwechsel weg.
+      const restarted = await neuStarten(conf)
       return json(res, 200, { ok: true, lang, restarted })
     }
 

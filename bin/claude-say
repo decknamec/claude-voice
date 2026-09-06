@@ -5,9 +5,14 @@
 #   claude-say "Text"
 #   claude-say --list          Stimmen + Modelle des Accounts anzeigen
 #   claude-say --doctor        Konfiguration prüfen
+#   claude-say --find-op       passende 1Password-Referenz suchen
 #
-# Key hinterlegen (macht der Nutzer selbst, landet nur im Schlüsselbund):
-#   security add-generic-password -a "$USER" -s elevenlabs-api-key -w
+# Key-Quellen, in dieser Reihenfolge:
+#   1. $ELEVENLABS_API_KEY
+#   2. EL_KEY_OP_REF in der Konfig, z.B. "op://Private/ElevenLabs/credential"
+#      -> der Key bleibt in 1Password und wird nur zur Laufzeit gelesen
+#   3. macOS-Schlüsselbund:
+#      security add-generic-password -a "$USER" -s elevenlabs-api-key -w
 set -uo pipefail
 
 VOICE=Anna; RATE=190
@@ -18,12 +23,19 @@ EL_STABILITY=0.45
 EL_SIMILARITY=0.75
 EL_SPEED=""                       # z.B. 1.05; leer = Modell-Default
 EL_FORMAT=mp3_44100_128
+EL_KEY_OP_REF=""                  # 1Password-Referenz, siehe --find-op
+EL_KEY_OP_ACCOUNT=""              # nötig, wenn mehrere op-Accounts konfiguriert sind
 # shellcheck disable=SC1090
 [ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
 [ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
 
 api_key() {
   [ -n "${ELEVENLABS_API_KEY:-}" ] && { printf '%s' "$ELEVENLABS_API_KEY"; return 0; }
+  if [ -n "$EL_KEY_OP_REF" ] && command -v op >/dev/null 2>&1; then
+    local v opargs=(); [ -n "$EL_KEY_OP_ACCOUNT" ] && opargs=(--account "$EL_KEY_OP_ACCOUNT")
+    v=$(op read --no-newline "${opargs[@]}" "$EL_KEY_OP_REF" 2>/dev/null)
+    [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+  fi
   security find-generic-password -s elevenlabs-api-key -w 2>/dev/null && return 0
   return 1
 }
@@ -52,14 +64,41 @@ for m in json.load(sys.stdin):
         print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}  {m.get('name','')}\")"
     exit 0 ;;
   --doctor)
-    if key=$(api_key); then echo "Key: gefunden (${#key} Zeichen)"; else echo "Key: fehlt -> nutzt macOS say ($VOICE)"; exit 0; fi
+    if key=$(api_key); then
+      src="Schlüsselbund"
+      [ -n "${ELEVENLABS_API_KEY:-}" ] && src="Umgebungsvariable"
+      [ -z "${ELEVENLABS_API_KEY:-}" ] && [ -n "$EL_KEY_OP_REF" ] && src="1Password ($EL_KEY_OP_REF)"
+      echo "Key: gefunden über $src (${#key} Zeichen)"
+    else
+      echo "Key: fehlt -> nutzt macOS say ($VOICE)"
+      command -v op >/dev/null 2>&1 && ! op whoami >/dev/null 2>&1 && \
+        echo "     Hinweis: op ist installiert, aber nicht angemeldet (eval \$(op signin))"
+      exit 0
+    fi
     echo "Modell:  $EL_MODEL"
     echo "Stimme:  ${EL_VOICE_ID:-<erste des Accounts>}"
     code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
            -H "xi-api-key: $key" https://api.elevenlabs.io/v1/user 2>/dev/null)
     echo "API:     HTTP $code $([ "$code" = 200 ] && echo '(ok)' || echo '(Key ungültig?)')"
     exit 0 ;;
-  -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  --find-op)
+    command -v op >/dev/null 2>&1 || { echo "op (1Password CLI) fehlt." >&2; exit 1; }
+    op whoami >/dev/null 2>&1 || { echo "Nicht angemeldet. Erst:  eval \$(op signin)" >&2; exit 1; }
+    echo "Kandidaten (nur Feldnamen, keine Werte):"
+    op item list --format=json 2>/dev/null | python3 -c "
+import json,subprocess,sys
+for it in json.load(sys.stdin):
+    if 'eleven' not in it.get('title','').lower(): continue
+    vault=it.get('vault',{}).get('name','?')
+    d=json.loads(subprocess.run(['op','item','get',it['id'],'--format=json'],
+                                capture_output=True,text=True).stdout or '{}')
+    for f in d.get('fields',[]):
+        if f.get('value'):
+            print(f\"  EL_KEY_OP_REF=\\\"op://{vault}/{it['title']}/{f.get('label') or f.get('id')}\\\"\")"
+    echo
+    echo "Passende Zeile in ~/.claude/voice.conf eintragen."
+    exit 0 ;;
+  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 TEXT="${1:-}"

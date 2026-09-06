@@ -118,24 +118,42 @@ async function stopSpeech () {
 }
 
 // ── Whisper: Modell einmal laden statt pro Äußerung (~0,3 s je Aufruf). ──
-let whisper = { proc: null, port: PORT + 500, ready: false }
+// `owned` merkt, ob wir den Server selbst gestartet haben — nur dann beenden wir ihn.
+let whisper = { proc: null, port: PORT + 500, ready: false, owned: false }
+
+const whisperAlive = async (ms = 500) => {
+  try {
+    const r = await fetch(`http://127.0.0.1:${whisper.port}/`, { signal: AbortSignal.timeout(ms) })
+    return !!r.status
+  } catch { return false }
+}
 
 async function startWhisper (conf) {
   if (whisper.ready || whisper.proc) return whisper.ready
+  // Läuft auf dem Port schon einer — etwa der Rest eines hart beendeten Laufs —,
+  // dann den benutzen. whisper-server bindet mit SO_REUSEPORT: ein zweiter
+  // bekäme den Port anstandslos dazu, der Kernel verteilte die Anfragen dann
+  // im Wechsel auf beide, und jede Instanz legt das halbe Gigabyte Modell
+  // noch einmal in den Speicher. Genau so sammeln sich Waisen an.
+  if (await whisperAlive()) { whisper.ready = true; whisper.owned = false; return true }
   if (!existsSync(conf.MODEL)) return false
   whisper.proc = spawn('whisper-server', [
     '-m', conf.MODEL, '--host', '127.0.0.1', '--port', String(whisper.port),
     '-t', '8', '--convert'   // nimmt webm direkt an, spart den ffmpeg-Schritt
   ], { stdio: 'ignore' })
-  whisper.proc.on('close', () => { whisper.proc = null; whisper.ready = false })
+  whisper.owned = true
+  whisper.proc.on('close', () => { whisper.proc = null; whisper.ready = false; whisper.owned = false })
   for (let i = 0; i < 60; i++) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${whisper.port}/`, { signal: AbortSignal.timeout(500) })
-      if (r.status) { whisper.ready = true; return true }
-    } catch {}
+    if (await whisperAlive()) { whisper.ready = true; return true }
     await new Promise(r => setTimeout(r, 250))
   }
   return false
+}
+
+// Nur den eigenen Kindprozess abräumen, nie einen fremden auf demselben Port.
+function stopWhisper () {
+  if (whisper.proc && whisper.owned) { try { whisper.proc.kill() } catch {} }
+  whisper.proc = null; whisper.ready = false; whisper.owned = false
 }
 
 const JUNK = /^(\.|\[blank_audio\]|\(musik\)|untertitel.*|vielen dank[.!]?|.*amara\.org.*)$/i
@@ -490,7 +508,7 @@ const server = createServer(async (req, res) => {
       json(res, 200, { ok: true })
       stopSpeech()
       try { S?.q.close() } catch {}
-      if (whisper.proc) { try { whisper.proc.kill() } catch {} }
+      stopWhisper()
       setTimeout(() => { server.close(); process.exit(0) }, 150)
       return
     }
@@ -501,7 +519,12 @@ const server = createServer(async (req, res) => {
   }
 })
 
-process.on('exit', () => { if (whisper.proc) { try { whisper.proc.kill() } catch {} } })
+// Ohne die Signal-Handler ueberlebt whisper-server jedes Ctrl-C und jedes kill
+// und haelt Port und Modellspeicher weiter — der Fall, der die Waisen erzeugt hat.
+process.on('exit', stopWhisper)
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => { stopWhisper(); process.exit(0) })
+}
 
 server.listen(PORT, '127.0.0.1', () => {
   // Das Token steht in der URL — nur gleichherkünftige Seiten können es lesen.

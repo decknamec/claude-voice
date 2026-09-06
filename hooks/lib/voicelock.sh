@@ -2,7 +2,8 @@
 # Wer gerade selbst spricht (Loop, UI), meldet sich hier an — dann schweigt der
 # Stop-Hook. Ein PID-Verzeichnis statt einer einzelnen Datei, damit zwei parallele
 # Instanzen sich nicht gegenseitig abmelden und ein Absturz kein Lock hinterlässt.
-VOICELOCK_DIR="$HOME/.claude/voice-locks"
+# Überschreibbar, damit Tests nicht im echten Verzeichnis herumfuhrwerken.
+VOICELOCK_DIR="${VOICELOCK_DIR:-$HOME/.claude/voice-locks}"
 VOICELOCK_LEGACY="$HOME/.claude/voice-loop.lock"
 
 voicelock_acquire() { mkdir -p "$VOICELOCK_DIR"; : > "$VOICELOCK_DIR/$$"; }

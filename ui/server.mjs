@@ -587,7 +587,10 @@ const server = createServer(async (req, res) => {
     const conf = loadConf()
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      const html = await readFile(join(HERE, 'index.html'))
+      // Der React-Bau hat Vorrang, wenn er da ist. Sonst die handgeschriebene
+      // Fassung — so bleibt die Oberflaeche auch ohne `npm run build` bedienbar.
+      const gebaut = join(HERE, '..', 'app', 'dist', 'index.html')
+      const html = await readFile(existsSync(gebaut) ? gebaut : join(HERE, 'index.html'))
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       return res.end(html)
     }

@@ -110,6 +110,22 @@ t "install.sh verlinkt agent-loop.mjs" \
 t "Schleife findet ihre Datei auch ohne Installation" \
   "grep -q 'dirname \"\$0\")/..' '$REPO/bin/claude-voice'"
 
+echo "React-Oberflaeche"
+t "TypeScript ist fehlerfrei" \
+  "cd '$REPO/app' && npx --no-install tsc -b --noEmit" \
+  "npm install im Ordner app fehlt? Dann ueberspringt der Launcher den Bau"
+t "Bau erzeugt genau eine Datei" \
+  "cd '$REPO/app' && npx --no-install vite build >/dev/null 2>&1 && [ \"\$(ls dist | wc -l | tr -d ' ')\" = 1 ]" \
+  "die Seite haelt das Sitzungs-Token, sie darf zur Laufzeit nichts nachladen"
+t "Bau laedt nichts von aussen nach" \
+  "! grep -qE '<(script|link)[^>]+(src|href)=\"https?:' '$REPO/app/dist/index.html'" \
+  "kein CDN, keine externe Schriftart"
+t "Server bevorzugt den Bau" \
+  "grep -q \"app', 'dist', 'index.html\" '$REPO/ui/server.mjs'"
+t "dist steht in der gitignore" \
+  "grep -q '^app/dist/' '$REPO/.gitignore'" \
+  "ein 440-kB-Buendel gehoert nicht in die Versionsverwaltung"
+
 echo "UI-Server"
 t "server.mjs parst" "node --check '$REPO/ui/server.mjs'"
 t "Token-Prüfung vorhanden" \

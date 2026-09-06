@@ -39,6 +39,24 @@ if [ ! -d "$UI_DIR/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
     echo "npm install fehlgeschlagen — siehe $UI_DIR" >&2; exit 1; }
 fi
 
+# Die React-Oberfläche wird gebaut, nicht ausgeliefert: ein 440-kB-Bündel
+# gehört nicht in die Versionsverwaltung. Fehlt sie oder ist eine Quelldatei
+# neuer als der Bau, einmal bauen. Schlägt das fehl, springt der Server auf
+# die handgeschriebene Fassung zurück, statt gar nicht zu starten.
+APP_DIR="$(cd "$UI_DIR/.." && pwd)/app"
+if [ -f "$APP_DIR/package.json" ]; then
+  NEUER=$(find "$APP_DIR/src" "$APP_DIR/index.html" -newer "$APP_DIR/dist/index.html" 2>/dev/null | head -1)
+  if [ ! -f "$APP_DIR/dist/index.html" ] || [ -n "$NEUER" ]; then
+    [ -d "$APP_DIR/node_modules/vite" ] || {
+      echo "Baue die Oberfläche (einmalig)…"
+      (cd "$APP_DIR" && npm install --silent) >/dev/null 2>&1
+    }
+    echo "Baue die Oberfläche…"
+    (cd "$APP_DIR" && npm run build --silent) >/dev/null 2>&1 \
+      || echo "Bau fehlgeschlagen — es läuft die einfache Oberfläche." >&2
+  fi
+fi
+
 # Token statt bloßem "nur localhost": eine fremde Webseite kann es nicht lesen,
 # weil es nur in unserer eigenen URL steht.
 TOKEN=$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")

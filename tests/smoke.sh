@@ -97,6 +97,19 @@ t "Shell- und UI-Filter liefern dasselbe" \
   "node '$REPO/tests/speakable-diff.mjs'" \
   "Details: node tests/speakable-diff.mjs"
 
+echo "CLI-Schleife auf dem Agent SDK"
+t "agent-loop.mjs parst" "node --check '$REPO/ui/agent-loop.mjs'"
+# Die alte Schleife startete je Aeusserung einen eigenen Prozess. Das darf
+# nicht zurueckkommen: es kostete gemessen rund 13 Sekunden pro Satz.
+t "kein claude -p je Aeusserung mehr" \
+  "! grep -qE 'claude .*(--resume|--session-id) ' '$REPO/bin/claude-voice'" \
+  "die Session bleibt offen, siehe ui/agent-loop.mjs"
+t "install.sh verlinkt agent-loop.mjs" \
+  "grep -q 'ui/agent-loop.mjs' '$REPO/install.sh'" \
+  "sonst fehlt die Datei nach der Installation und die Schleife bricht ab"
+t "Schleife findet ihre Datei auch ohne Installation" \
+  "grep -q 'dirname \"\$0\")/..' '$REPO/bin/claude-voice'"
+
 echo "UI-Server"
 t "server.mjs parst" "node --check '$REPO/ui/server.mjs'"
 t "Token-Prüfung vorhanden" \

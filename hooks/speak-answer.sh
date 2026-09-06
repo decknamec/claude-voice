@@ -50,9 +50,11 @@ raw=$(tail -n 400 "$transcript" \
 
 # Vorlesbar machen: Codeblöcke, Pfade, URLs und Markdown-Rauschen raus — sonst
 # buchstabiert `say` minutenlang Slashes und Backticks.
-spoken=$(printf '%s' "$raw" | speakable_text)
+# Erst auf ganze Absätze eindampfen, dann vorlesbar machen. Andersherum wären
+# die Absatzgrenzen schon weg und es bliebe nur der harte Schnitt.
+spoken=$(clip_to_paragraph "$raw" "$MAX_CHARS")
+spoken=$(printf '%s' "$spoken" | speakable_text)
 [ -n "$spoken" ] || exit 0
-
 spoken=$(clip_to_sentence "$spoken" "$MAX_CHARS")
 
 pkill -x say 2>/dev/null || true

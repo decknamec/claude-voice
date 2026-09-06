@@ -39,6 +39,7 @@ export const EN: Record<string, string> = {
   'Abbrechen':'Interrupt', 'Beenden':'Quit', 'Züge':'turns',
   'Seitenleiste ein- und ausklappen (S)':'Collapse and expand the sidebar (S)',
   'Seitenleiste umschalten':'Toggle sidebar', 'Laufendes Modell':'Model in use',
+  'Seitenleiste schließen':'Close sidebar', 'Seitenleiste schließen (Esc)':'Close the sidebar (Esc)',
   'Arbeitsverzeichnis der Session':'Working directory of the session',
   'Neue Session beginnen':'Start a new session',
   'Freihändig: hört durchgehend zu, du kannst dazwischenreden':

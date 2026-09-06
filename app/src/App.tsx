@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SidebarSimple } from '@phosphor-icons/react'
+import { SidebarSimple, X } from '@phosphor-icons/react'
 import clsx from 'clsx'
 import { api } from './lib/api'
 import { audio } from './lib/audio'
 import { steuerung, fehlerText } from './lib/steuerung'
 import { markiereZugStart, setzeMelder, setzeNachZug, setzeUebersetzer, verbinde } from './lib/strom'
-import { AKZENTE, GROESSEN, useEinstellungen } from './store/einstellungen'
+import { AKZENTE, GROESSEN, SCHMAL, useEinstellungen } from './store/einstellungen'
 import { useSitzung } from './store/sitzung'
 import { useT } from './lib/useT'
 import { Buehne } from './components/Buehne'
@@ -31,6 +31,26 @@ export default function App () {
   const [frei, setzeFrei] = useState(false)
   const [bereit, setzeBereit] = useState(false)
   const gehalten = useRef(false)
+
+  // ── Schmales Fenster ───────────────────────────────────────────────
+  //    Die Grenze gehört nach JS und nicht bloß in eine Breiten-Variante:
+  //    im überlagernden Zustand ändert sich nicht nur der Rand, sondern das
+  //    Verhalten — es braucht Abdunklung, Schließen-Knopf und Escape. Zwei
+  //    getrennte Quellen (CSS-Query hier, matchMedia dort) liefen zudem an
+  //    genau 1000 px auseinander.
+  const [schmal, setzeSchmal] = useState(() => matchMedia(SCHMAL).matches)
+  useEffect(() => {
+    const mq = matchMedia(SCHMAL)
+    const merke = () => setzeSchmal(mq.matches)
+    merke()
+    mq.addEventListener('change', merke)
+    return () => mq.removeEventListener('change', merke)
+  }, [])
+
+  // Nur im schmalen Fenster verdeckt die Leiste den Inhalt — und nur dann
+  // ist sie ein Overlay, das sich schließen lassen muss.
+  const ueberlagert = schmal && e.seiteAuf
+  const schliesseLeiste = useCallback(() => e.setzen({ seiteAuf: false }), [e.setzen])
 
   // ── Darstellung an den Body hängen: die Stellschrauben laufen über
   //    Variablen, damit die Größenverhältnisse untereinander stimmen.
@@ -153,6 +173,13 @@ export default function App () {
       if (k === 'a') { ev.preventDefault(); e.setzen({ spurAuf: !e.spurAuf }); return }
       if (k === 'n') { ev.preventDefault(); void steuerung.neueSitzung(); return }
       if (k === 's') { ev.preventDefault(); e.setzen({ seiteAuf: !e.seiteAuf }); return }
+      if (ev.code === 'Escape') {
+        ev.preventDefault()
+        // Über dem Inhalt liegende Leiste zuerst: Escape räumt weg, was im
+        // Weg ist, bevor es an den laufenden Turn geht.
+        if (ueberlagert) { schliesseLeiste(); return }
+        void steuerung.abbrechen(); return
+      }
       if (ev.code === 'Space' && !ev.repeat && !gehalten.current) {
         ev.preventDefault(); gehalten.current = true
         markiereZugStart()
@@ -160,7 +187,6 @@ export default function App () {
           const [a, b] = fehlerText(err); melde(t(a), t(b), true)
         })
       }
-      if (ev.code === 'Escape') { ev.preventDefault(); void steuerung.abbrechen() }
     }
     const hoch = (ev: KeyboardEvent) => {
       if (ev.code === 'Space' && gehalten.current) {
@@ -170,7 +196,7 @@ export default function App () {
     addEventListener('keydown', runter)
     addEventListener('keyup', hoch)
     return () => { removeEventListener('keydown', runter); removeEventListener('keyup', hoch) }
-  }, [frei, tastenHilfe, e.spurAuf, e.seiteAuf, wechsleModus, freihaendig, t])
+  }, [frei, tastenHilfe, e.spurAuf, e.seiteAuf, ueberlagert, schliesseLeiste, wechsleModus, freihaendig, t])
 
   return (
     <>
@@ -206,14 +232,32 @@ export default function App () {
       )}
 
       <div className="relative z-[1] h-full">
+        {ueberlagert && (
+          <div data-abdunklung aria-hidden onClick={schliesseLeiste}
+               className="fixed inset-0 z-[5] bg-[color-mix(in_srgb,var(--bg)_65%,transparent)]
+                          animate-[blende_var(--t-quick)_var(--ease-out-sig)_both]" />
+        )}
+
         <aside className={clsx(
           'fixed left-0 top-0 z-[6] flex h-dvh w-[280px] flex-col gap-[18px] overflow-y-auto overflow-x-hidden',
           'border-r border-line bg-panel p-[20px_18px] transition-transform duration-300 ease-[var(--ease-sig)]',
-          !e.seiteAuf && '-translate-x-full'
+          !e.seiteAuf && '-translate-x-full',
+          ueberlagert && 'shadow-panel'
         )}>
           <div className="flex items-center gap-[9px] text-[13px] font-semibold">
             <span className="h-[7px] w-[7px] rounded-full bg-accent" />
             <b>Claude Voice</b>
+            {/* Der Umschalter in der Kopfzeile liegt hier unter der Leiste. Statt
+                ihn nach oben zu zwingen, wo er über der Leiste schweben würde,
+                bekommt die Leiste ihren eigenen Ausgang. */}
+            {schmal && (
+              <button onClick={schliesseLeiste}
+                      aria-label={t('Seitenleiste schließen')}
+                      title={t('Seitenleiste schließen (Esc)')}
+                      className="chip ml-auto h-[26px] w-[26px] justify-center p-0">
+                <X size={13} />
+              </button>
+            )}
           </div>
           <GruppeEinstellungen modelle={modelle} />
           <GruppeDarstellung />
@@ -227,7 +271,7 @@ export default function App () {
 
         <main className={clsx('grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)_auto] min-w-0',
                               'transition-[margin] duration-300 ease-[var(--ease-sig)]',
-                              e.seiteAuf ? 'ml-[280px] max-[1000px]:ml-0' : 'ml-0')}>
+                              e.seiteAuf && !schmal ? 'ml-[280px]' : 'ml-0')}>
           <header className="flex items-center gap-[10px] border-b border-line px-[18px] py-[13px]">
             <button
               onClick={() => e.setzen({ seiteAuf: !e.seiteAuf })}

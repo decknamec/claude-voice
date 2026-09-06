@@ -11,6 +11,11 @@ export const AKZENTE = [
   { name: 'Türkis', hell: '#0d9488', dunkel: '#2dd4bf' }
 ] as const
 
+/** Unter dieser Breite stehen Leiste und Inhalt nicht mehr nebeneinander, die
+ *  Leiste legt sich also über den Inhalt. Die Grenze steht genau einmal hier:
+ *  Layout, Abdunklung und Escape müssen sich über dasselbe Fenster einig sein. */
+export const SCHMAL = '(max-width:1000px)'
+
 export const GROESSEN = [
   ['sehr klein', 13], ['klein', 14], ['normal', 15], ['groß', 17], ['sehr groß', 19]
 ] as const
@@ -54,7 +59,7 @@ export const useEinstellungen = create<Einstellungen>()(persist((set) => ({
   stilText: '',
   werkzeugzeilen: true,
   befehleGanz: false,
-  seiteAuf: matchMedia('(min-width:1001px)').matches,
+  seiteAuf: !matchMedia(SCHMAL).matches,
   spurAuf: false,
   offeneGruppen: { 'grp-set': true, 'grp-hist': true },
   setzen: p => set(p),

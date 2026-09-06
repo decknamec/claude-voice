@@ -16,7 +16,7 @@ link() { mkdir -p "$(dirname "$2")"; ln -sfn "$1" "$2"; echo "  $2 -> ${1#$REPO/
 
 if [ "${1:-}" = "--uninstall" ]; then
   for f in bin/claude-say bin/claude-voice bin/claude-voice-ui \
-           voice-ui/server.mjs voice-ui/index.html \
+           voice-ui/server.mjs voice-ui/index.html voice-ui/speakable.mjs \
            hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh hooks/lib/voicelock.sh hooks/lib/elkey.sh; do
     [ -L "$C/$f" ] && rm -f "$C/$f" && echo "  entfernt: $C/$f"
   done
@@ -50,6 +50,7 @@ link "$REPO/bin/claude-voice"        "$C/bin/claude-voice"
 link "$REPO/bin/claude-voice-ui"     "$C/bin/claude-voice-ui"
 link "$REPO/ui/server.mjs"           "$C/voice-ui/server.mjs"
 link "$REPO/ui/index.html"           "$C/voice-ui/index.html"
+link "$REPO/ui/speakable.mjs"        "$C/voice-ui/speakable.mjs"
 link "$REPO/hooks/speak-answer.sh"   "$HOOK"
 link "$REPO/hooks/voice"             "$C/hooks/voice"
 link "$REPO/hooks/lib/speakable.sh"  "$C/hooks/lib/speakable.sh"
@@ -69,7 +70,7 @@ if [ -f "$MODEL" ]; then
   echo "  vorhanden ($(du -h "$MODEL" | cut -f1))"
 else
   echo "  fehlt (~547 MB). Jetzt laden? [j/N]"
-  read -r a
+  read -r a || a=""
   if [ "$a" = "j" ] || [ "$a" = "J" ]; then
     mkdir -p "$MODEL_DIR"; curl -fL --progress-bar -o "$MODEL" "$MODEL_URL"
   else
@@ -101,17 +102,31 @@ else echo "  keine Stimme — siehe README, Abschnitt \"Piper einrichten\""; fi
 
 echo
 echo "Stop-Hook in settings.json:"
-if [ -f "$C/settings.json" ] && jq -e --arg cmd "$HOOK" \
-     '[.hooks.Stop[]?.hooks[]?.command] | index($cmd)' "$C/settings.json" >/dev/null 2>&1; then
+SETTINGS="$C/settings.json"
+ADD_HOOK='
+  .hooks //= {} | .hooks.Stop //= [{matcher: "", hooks: []}]
+  | .hooks.Stop[0].hooks += [{type: "command", command: $cmd}]'
+if [ ! -f "$SETTINGS" ]; then
+  jq -n --arg cmd "$HOOK" '{hooks:{Stop:[{matcher:"",hooks:[{type:"command",command:$cmd}]}]}}' \
+    > "$SETTINGS" && echo "  angelegt und registriert"
+elif ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
+  # Wichtig: hier NICHT neu schreiben. Eine unlesbare settings.json ist meist eine
+  # volle Konfiguration mit einem Tippfehler — die wäre sonst weg.
+  echo "  $SETTINGS ist kein gültiges JSON — unangetastet gelassen."
+  echo "  Von Hand nachtragen: .hooks.Stop[0].hooks += [{type:\"command\", command:\"$HOOK\"}]"
+elif jq -e --arg cmd "$HOOK" '[.hooks.Stop[]?.hooks[]?.command] | index($cmd)' \
+       "$SETTINGS" >/dev/null 2>&1; then
   echo "  war schon registriert"
 else
+  BAK="$SETTINGS.bak.$(date +%Y%m%d%H%M%S)"
+  cp "$SETTINGS" "$BAK"
   tmp=$(mktemp)
-  jq --arg cmd "$HOOK" '
-    .hooks //= {} | .hooks.Stop //= [{matcher: "", hooks: []}]
-    | .hooks.Stop[0].hooks += [{type: "command", command: $cmd}]
-  ' "${C}/settings.json" > "$tmp" 2>/dev/null \
-    || jq -n --arg cmd "$HOOK" '{hooks:{Stop:[{matcher:"",hooks:[{type:"command",command:$cmd}]}]}}' > "$tmp"
-  mv "$tmp" "$C/settings.json" && echo "  registriert"
+  if jq --arg cmd "$HOOK" "$ADD_HOOK" "$SETTINGS" > "$tmp" && [ -s "$tmp" ]; then
+    mv "$tmp" "$SETTINGS"; echo "  registriert (Sicherung: ${BAK##*/})"
+  else
+    rm -f "$tmp" "$BAK"
+    echo "  FEHLGESCHLAGEN — settings.json unverändert" >&2
+  fi
 fi
 
 echo

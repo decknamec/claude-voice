@@ -97,7 +97,7 @@ emit() {  # $1 = erzeugte Datei
 
 speak_say() {
   if [ -n "$OUT" ]; then
-    # AIFF, weil `say` genau das ohne Umweg kann; Browser spielen es ab.
+    # 16-bit-WAV: `say` kann das ohne Umweg, und Browser spielen es ab.
     say -v "$VOICE" -r "$RATE" -o "$OUT" --data-format=LEI16@22050 --file-format=WAVE -- "$1"
   else
     say -v "$VOICE" -r "$RATE" -- "$1"
@@ -105,22 +105,22 @@ speak_say() {
 }
 
 speak_piper() {
-  local bin tmp
+  local bin dir tmp rc
   bin=$(piper_bin) || return 1
   [ -f "$PIPER_MODEL" ] || return 1
-  tmp=$(mktemp -t claudesay).wav
+  dir=$(mktemp -d -t claudesay); tmp="$dir/a.wav"
   printf '%s' "$1" | "$bin" -m "$PIPER_MODEL" -f "$tmp" >/dev/null 2>&1
-  [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
-  emit "$tmp"
+  [ -s "$tmp" ] || { rm -rf "$dir"; return 1; }
+  emit "$tmp"; rc=$?; rm -rf "$dir"; return $rc
 }
 
 speak_edge() {
-  local bin tmp
+  local bin dir tmp rc
   bin=$(edge_bin) || return 1
-  tmp=$(mktemp -t claudesay).mp3
+  dir=$(mktemp -d -t claudesay); tmp="$dir/a.mp3"
   "$bin" --voice "$EDGE_VOICE" --text "$1" --write-media "$tmp" >/dev/null 2>&1
-  [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
-  emit "$tmp"
+  [ -s "$tmp" ] || { rm -rf "$dir"; return 1; }
+  emit "$tmp"; rc=$?; rm -rf "$dir"; return $rc
 }
 
 el_get() {  # $1 = Pfad
@@ -129,7 +129,7 @@ el_get() {  # $1 = Pfad
 }
 
 speak_elevenlabs() {
-  local key body tmp code
+  local key body dir tmp code rc
   key=$(api_key) || return 1
 
   # Ohne konfigurierte Stimme die erste des Accounts nehmen und merken, damit
@@ -147,7 +147,7 @@ speak_elevenlabs() {
                 '{text:$t, model_id:$m, voice_settings:{stability:$st, similarity_boost:$sb}}')
   [ -n "$EL_SPEED" ] && body=$(printf '%s' "$body" | jq -c --argjson sp "$EL_SPEED" '.voice_settings.speed = $sp')
 
-  tmp=$(mktemp -t claudesay).mp3
+  dir=$(mktemp -d -t claudesay); tmp="$dir/a.mp3"
   code=$(curl -sS --max-time 45 -o "$tmp" -w '%{http_code}' \
     -X POST "https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}?output_format=${EL_FORMAT}" \
     -H "xi-api-key: $key" -H 'content-type: application/json' \
@@ -155,9 +155,9 @@ speak_elevenlabs() {
   if [ "$code" != 200 ] || [ ! -s "$tmp" ]; then
     echo "claude-say: ElevenLabs HTTP $code" >&2
     head -c 300 "$tmp" >&2 2>/dev/null; echo >&2
-    rm -f "$tmp"; return 1
+    rm -rf "$dir"; return 1
   fi
-  emit "$tmp"
+  emit "$tmp"; rc=$?; rm -rf "$dir"; return $rc
 }
 
 # ── Unterbefehle ─────────────────────────────────────────────────────

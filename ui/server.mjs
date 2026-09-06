@@ -18,6 +18,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { query, listSessions } from '@anthropic-ai/claude-agent-sdk'
+import { speakable } from './speakable.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const HOME = homedir()
@@ -71,18 +72,6 @@ function push (event, data) {
 //    Freihandmodus möglich. ──
 const speech = { queue: [], busy: false, proc: null, seq: 0 }
 const audio = new Map()   // id -> { path, mime }
-
-function speakable (t) {
-  return t.replace(/```[\s\S]*?```/g, '')
-          .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, ' ')
-          .replace(/^\s*#{1,6}\s*/gm, '')
-          .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-          .replace(/\bhttps?:\/\/\S+/g, ' ')
-          .replace(/(?:~|\.{0,2})?(?:\/[\w.@+-]+){2,}\/?/g, ' die Datei ')
-          .replace(/`([^`]*)`/g, '$1')
-          .replace(/[*_>|#]+/g, ' ')
-          .replace(/\s+/g, ' ').trim()
-}
 
 function enqueueSpeech (text, conf) {
   const t = speakable(text)
@@ -247,7 +236,15 @@ function startSession (conf, resumeId) {
     try {
       for await (const msg of q) {
         if (msg.type === 'stream_event') {
-          const d = msg.event?.delta
+          const ev = msg.event
+          const d = ev?.delta
+          // Der Werkzeugname steht schon fest, bevor die Argumente durchgetropft
+          // sind — damit ist sofort sichtbar, woran gearbeitet wird.
+          if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
+            push('step', { id: ev.content_block.id, name: ev.content_block.name })
+          }
+          // Langes Nachdenken ohne Werkzeugaufruf sieht sonst aus wie ein Hänger.
+          if (d?.type === 'thinking_delta' && d.thinking) push('think', { text: d.thinking })
           if (d?.type === 'text_delta' && d.text) {
             buf += d.text
             push('delta', { text: d.text })

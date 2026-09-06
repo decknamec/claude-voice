@@ -91,6 +91,11 @@ t "Absatz-Kürzung schneidet an Absatzgrenze" \
   "[ \"\$(src; clip_to_paragraph \$'kurz.\\n\\nzweiter absatz der zu lang ist' 20)\" = 'kurz.' ]"
 t "Satz-Kürzung schneidet nicht im Wort" \
   "src; [ \"\$(clip_to_sentence 'Eins. Zwei. Drei.' 12)\" = 'Eins. Zwei.' ]"
+# Der Filter gibt es zweimal: in der Shell fuer Hook und Loop, in JS fuer die UI.
+# Genau da sind sie auseinandergelaufen (Pfad -> Dateiname vs. "die Datei").
+t "Shell- und UI-Filter liefern dasselbe" \
+  "node '$REPO/tests/speakable-diff.mjs'" \
+  "Details: node tests/speakable-diff.mjs"
 
 echo "UI-Server"
 t "server.mjs parst" "node --check '$REPO/ui/server.mjs'"

@@ -4,6 +4,8 @@ whisper-models/
 # Laufzeitkram
 *.log
 .DS_Store
+# whisper-server legt bei --convert Bruchstuecke im CWD ab
+whisper-server-*.wav
 voice-enabled
 voice-loop.lock
 voice-locks/
@@ -15,4 +17,3 @@ voice.env
 conf/voice.conf
 conf/voice-loop.conf
 node_modules/
-package-lock.json

@@ -1,0 +1,17 @@
+# Fixtures für tests/speakable-diff.mjs: Eingabe <TAB> erwartete Ausgabe.
+# \n steht für einen Zeilenumbruch. Keine Tabs in den Feldern.
+# Beide Filter — hooks/lib/speakable.sh und ui/speakable.mjs — müssen hier
+# dasselbe liefern; genau hier sind sie schon einmal auseinandergelaufen.
+Siehe /a/b/hook.sh hier	Siehe hook.sh hier
+Steht in ~/.claude/hooks/voice drin	Steht in voice drin
+Zwei Pfade: /a/b/eins.sh und /c/d/zwei.sh	Zwei Pfade: eins.sh und zwei.sh
+vor\n```\nkram()\n```\nnach	vor nach
+- eins\n- zwei	eins zwei
+1. eins\n2. zwei	eins zwei
+## Titel\nText	Titel Text
+[Doku](https://example.com/x) lesen	Doku lesen
+Mehr unter https://example.com/pfad/x ok	Mehr unter ok
+Ruf `claude-say` auf	Ruf claude-say auf
+Das ist **fett** und *kursiv*	Das ist fett und kursiv
+> Zitat	Zitat
+Ganz normaler Satz.	Ganz normaler Satz.

@@ -263,6 +263,24 @@ body[data-state="transcribing"] .orb::after{opacity:1;animation:sweep 1.1s var(-
 .preview.on{opacity:1}
 .preview b{color:var(--fg);font-weight:400}
 
+/* Was gerade passiert. Ohne das ist "Denkt nach…" minutenlang das Einzige,
+   was zu sehen ist — und das ist von einem Hänger nicht zu unterscheiden. */
+.step{
+  display:flex; align-items:center; gap:8px; margin-top:10px; min-height:16px;
+  max-width:min(620px,88vw); font-size:12.5px; color:var(--fg-dim);
+}
+.sspin{
+  width:9px; height:9px; flex:none; border-radius:50%;
+  border:1.5px solid var(--line); border-top-color:var(--accent);
+  animation:sspin .8s linear infinite;
+}
+@keyframes sspin{to{transform:rotate(1turn)}}
+.stxt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;
+      font-variant-numeric:tabular-nums}
+.ssec{flex:none;opacity:.55;font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){ .sspin{animation:none} }
+.act .row.dim .nm{color:var(--fg-dim)}
+
 .hint{font-size:12px;color:var(--fg-dim);opacity:.62;margin-top:6px;height:16px}
 kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-radius:5px;
     padding:1px 5px;background:var(--panel)}
@@ -644,6 +662,11 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
       </div>
       <div class="label" id="label">Bereit</div>
       <div class="dots"><i></i><i></i><i></i></div>
+      <div class="step" id="step" hidden>
+        <span class="sspin" aria-hidden="true"></span>
+        <span class="stxt" id="steptxt"></span>
+        <span class="ssec" id="stepsec"></span>
+      </div>
       <div class="meter" id="meter"><span></span></div>
       <div class="preview" id="preview"></div>
       <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>?</kbd> zeigt alle Tasten</div>
@@ -669,6 +692,7 @@ const $ = s => document.querySelector(s)
 ;(() => {
   const noetig = ['orb','label','hint','log','feed','act','actinner','empty','meter','preview',
                   'viz','toasts','keys','backend','voice','model','lang','perm','effort',
+                  'step','steptxt','stepsec',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
   const fehlt = noetig.filter(id => !document.getElementById(id))
   if (!fehlt.length) return
@@ -694,7 +718,47 @@ let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
 // Muss vor draw() stehen: die Zeichenschleife startet sofort und liest live.on.
 const live = { on:false, node:null, source:null, floor:0.012, level:0 }
 
+// ── Schrittanzeige ───────────────────────────────────────────────────
+// "Denkt nach…" allein sagt nicht, ob gearbeitet wird oder etwas klemmt.
+// Hier steht, woran gerade gearbeitet wird, plus die Dauer des Zuges.
+const stepBox = $('#step'), stepTxt = $('#steptxt'), stepSec = $('#stepsec')
+let stepTimer = null, stepT0 = 0
+
+function stepShow (text) {
+  stepTxt.textContent = text
+  stepBox.hidden = false
+  if (stepTimer) return
+  stepT0 = performance.now()
+  const tick = () => { stepSec.textContent = Math.round((performance.now() - stepT0) / 1000) + ' s' }
+  tick(); stepTimer = setInterval(tick, 500)
+}
+
+function stepHide () {
+  clearInterval(stepTimer); stepTimer = null
+  stepBox.hidden = true; stepTxt.textContent = ''; stepSec.textContent = ''
+}
+
+// Kurznamen der haeufigen Werkzeuge auf Deutsch — "Read" sagt einem Zuhoerer
+// nichts, "Liest server.mjs" schon.
+const TOOLVERB = { Bash:'Führt aus', Read:'Liest', Write:'Schreibt', Edit:'Ändert',
+                   Glob:'Sucht Dateien', Grep:'Durchsucht', WebFetch:'Lädt',
+                   WebSearch:'Sucht im Netz', Task:'Startet Unteragent',
+                   TodoWrite:'Plant', NotebookEdit:'Ändert Notebook' }
+const NURNAME = new Set(['Read','Write','Edit','NotebookEdit'])
+
+function stepLabel (name, input) {
+  const verb = TOOLVERB[name] || name
+  const key = ARG[name]
+  let arg = key && input?.[key] != null ? String(input[key]) : ''
+  if (NURNAME.has(name)) arg = arg.split('/').pop()
+  arg = arg.replace(/\s+/g, ' ').trim()
+  if (!arg) return verb + '…'
+  return verb + ' ' + (arg.length > 64 ? arg.slice(0, 64) + '…' : arg)
+}
+
 function setState (s) {
+  if (s === 'thinking') stepShow(stepTxt.textContent || 'Denkt nach…')
+  else if (s === 'idle' || s === 'error' || s === 'off') stepHide()
   state = s
   document.body.dataset.state = s
   label.textContent = TEXT[s] || s
@@ -923,7 +987,8 @@ addEventListener('keyup', e => {
 $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
   stopAudio()
-  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false; zeigeLeer()
+  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
+  stepHide(); thinkReset(); zeigeLeer()
   setState('idle'); label.textContent = 'Neue Session'
 })
 
@@ -1150,7 +1215,7 @@ async function ladeVerlauf () {
 async function fortsetzen (id, titel) {
   try {
     await post('/api/resume', JSON.stringify({ id }), 'application/json')
-    stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear()
+    stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); stepHide(); thinkReset()
     liveBubbleEl = null; busy = false; setState('idle'); zeigeLeer()
     toast('Session', `Fortgesetzt: ${titel}`, '')
     ladeVerlauf()
@@ -1195,11 +1260,28 @@ function actLine (name, arg, bad) {
 
 const actRows = new Map()
 
+// Das Nachdenken bekommt eine einzige, mitwachsende Zeile statt hunderter
+// Schnipsel — sonst scrollt die Spur sich selbst tot.
+let thinkRow = null, thinkBuf = ''
+
+function onThink (text) {
+  thinkBuf += text
+  const zeile = thinkBuf.split('\n').filter(z => z.trim()).pop() || ''
+  stepShow(zeile.length > 96 ? '…' + zeile.slice(-96) : zeile)
+  if (!thinkRow) { thinkRow = actLine('denkt', ''); thinkRow.classList.add('dim') }
+  thinkRow.querySelector('.arg').textContent = thinkBuf.slice(-400)
+  act.scrollTop = act.scrollHeight
+}
+
+function thinkReset () { thinkRow = null; thinkBuf = '' }
+
 function onTool (d) {
+  thinkReset()
   if (d.phase === 'use') {
     const key = ARG[d.name]
     const raw = key && d.input?.[key] != null ? String(d.input[key]) : JSON.stringify(d.input ?? {})
     actRows.set(d.id, actLine(d.name, raw.replace(/\s+/g, ' ').slice(0, 160)))
+    stepShow(stepLabel(d.name, d.input))
   } else {
     const row = actRows.get(d.id); actRows.delete(d.id)
     if (!row) return
@@ -1208,6 +1290,7 @@ function onTool (d) {
     r.className = 'res'
     r.textContent = d.ok ? (d.text ? '· ' + d.text.replace(/\s+/g, ' ').slice(0, 70) : '· ok') : '· fehlgeschlagen'
     row.append(r)
+    if (busy) stepShow('Denkt weiter…')
     act.scrollTop = act.scrollHeight
   }
 }
@@ -1314,6 +1397,7 @@ es.addEventListener('delta', e => {
   const { text } = JSON.parse(e.data)
   const el = liveBubble()
   el.querySelector('.body').textContent += text
+  stepHide(); thinkReset()
   if (state !== 'speaking') setState('speaking')
   el.scrollIntoView({ behavior:'smooth', block:'end' })
 })
@@ -1329,6 +1413,7 @@ es.addEventListener('message', e => {
 
 es.addEventListener('done', () => {
   if (liveBubbleEl) { liveBubbleEl.classList.remove('live'); liveBubbleEl = null }
+  stepHide(); thinkReset()
   busy = false
   const settle = () => { if (!speaking()) setState('idle'); else setTimeout(settle, 200) }
   settle()
@@ -1343,6 +1428,13 @@ es.addEventListener('error', e => {
 })
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
+es.addEventListener('think', e => onThink(JSON.parse(e.data).text))
+// Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
+es.addEventListener('step', e => {
+  const { name } = JSON.parse(e.data)
+  thinkReset()
+  stepShow((TOOLVERB[name] || name) + '…')
+})
 
 es.addEventListener('audio', e => { player.queue.push(JSON.parse(e.data).id); playNext() })
 es.addEventListener('audio-stop', stopAudio)

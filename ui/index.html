@@ -75,16 +75,19 @@ body{
 
 /* Zwei Spalten: was man einstellt links, was man tut in der Mitte. Vorher lagen
    beide Ebenen übereinander und schoben das Gespräch nach unten aus dem Bild. */
-.shell{
-  position:relative; z-index:1;
-  display:grid; grid-template-columns:280px minmax(0,1fr);
-  min-height:100dvh;
-}
+.shell{position:relative;z-index:1;min-height:100dvh}
 .side{
+  position:fixed; left:0; top:0; z-index:6; width:280px; height:100dvh;
   border-right:1px solid var(--line); background:var(--panel);
-  padding:20px 18px; display:flex; flex-direction:column; gap:22px;
-  height:100dvh; position:sticky; top:0; overflow-y:auto;
+  padding:20px 18px; display:flex; flex-direction:column; gap:18px;
+  overflow-y:auto; overflow-x:hidden;
+  transition:transform var(--t-std) var(--e);
 }
+main{margin-left:280px;transition:margin-left var(--t-std) var(--e)}
+
+/* Eingeklappt: Leiste hinausschieben, Hauptspalte nimmt die Breite ein. */
+body[data-side="off"] .side{transform:translateX(-100%)}
+body[data-side="off"] main{margin-left:0}
 .brand{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;color:var(--fg)}
 .sgroup{min-height:0}
 .sgroup[open].grow{flex:1;display:flex;flex-direction:column}
@@ -152,7 +155,11 @@ header .sp{flex:1}
   max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .ctx .sp2{color:var(--line)}
-.only-narrow{display:none}
+.chip.icon{display:grid;place-items:center;padding:0;width:30px;height:30px;flex:none}
+.chip.icon svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
+/* Der Balken im Symbol wandert mit: gefüllt heißt offen, leer heißt zu. */
+.chip.icon svg line{transition:transform var(--t-std) var(--e);transform-origin:center}
+body[data-side="off"] .chip.icon svg line{transform:translateX(-4.5px);opacity:.45}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
      transition:background var(--t-std) var(--e)}
 header b{color:var(--fg);font-weight:600}
@@ -519,14 +526,11 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .empty{opacity:.5}
 
 @media (max-width:1000px){
-  .shell{grid-template-columns:minmax(0,1fr)}
-  .side{
-    position:fixed; z-index:5; left:0; top:0; width:284px;
-    transform:translateX(-100%); transition:transform var(--t-std) var(--e);
-    box-shadow:var(--shadow);
-  }
-  body[data-side="open"] .side{transform:none}
-  .only-narrow{display:inline-block}
+  /* Zu schmal für zwei Spalten: die Leiste legt sich über den Inhalt, statt
+     ihn zusammenzuquetschen. */
+  main{margin-left:0}
+  .side{box-shadow:var(--shadow)}
+  body:not([data-side="off"]) .side{transform:none}
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -606,7 +610,13 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 
   <main>
     <header>
-      <button class="chip only-narrow" id="sidetoggle" title="Seitenleiste">Menü</button>
+      <button class="chip icon" id="sidetoggle" title="Seitenleiste ein- und ausklappen (S)"
+              aria-label="Seitenleiste umschalten" aria-expanded="true">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="1.5" y="2.5" width="13" height="11" rx="2.5"/>
+          <line x1="6" y1="2.5" x2="6" y2="13.5"/>
+        </svg>
+      </button>
       <span class="ctx">
         <b id="cfg" title="Laufendes Modell">…</b>
         <span class="sp2">·</span>
@@ -902,6 +912,7 @@ addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') { e.preventDefault(); setLive(!live.on); return }
   if (e.key === 'a' || e.key === 'A') { e.preventDefault(); $('#acttoggle').click(); return }
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); $('#reset').click(); return }
+  if (e.key === 's' || e.key === 'S') { e.preventDefault(); $('#sidetoggle').click(); return }
   if (e.code === 'Space' && !e.repeat && !held) { e.preventDefault(); held = true; start() }
   if (e.code === 'Escape') { e.preventDefault(); interrupt() }
 })
@@ -1094,9 +1105,15 @@ if (localStorage.getItem('claude-voice-live') === '1') {
 // ── Einstellungs- und Verlaufsleiste ─────────────────────────────────
 // Die Leiste steht ab 1000 px fest; darunter schiebt sie sich als Überlagerung ein.
 $('#keys').addEventListener('click', () => { $('#keys').hidden = true })
-$('#sidetoggle').addEventListener('click', () => {
-  document.body.dataset.side = document.body.dataset.side === 'open' ? '' : 'open'
-})
+function setSide (offen) {
+  document.body.dataset.side = offen ? '' : 'off'
+  $('#sidetoggle').setAttribute('aria-expanded', String(offen))
+  localStorage.setItem('claude-voice-side', offen ? '1' : '0')
+}
+// Auf schmalen Fenstern beim ersten Aufruf zu, sonst verdeckt sie den Inhalt.
+const sideDefault = matchMedia('(min-width:1001px)').matches
+setSide((localStorage.getItem('claude-voice-side') ?? (sideDefault ? '1' : '0')) === '1')
+$('#sidetoggle').addEventListener('click', () => setSide(document.body.dataset.side === 'off'))
 
 // ── Verlauf ──────────────────────────────────────────────────────────
 const hist = $('#history')

@@ -18,6 +18,7 @@ MAX_CHARS=600
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/speakable.sh"
+source "$HERE/lib/voicelock.sh"
 
 # focus.sh ist optional und gehört nicht zu diesem Repo — wer es hat (macOS
 # Focus/"Nicht stören" erkennen), bei dem schweigt der Hook im Fokusmodus.
@@ -26,8 +27,8 @@ if [ -f "$HERE/lib/focus.sh" ]; then
   focus_active && exit 0
 fi
 
-# Läuft der Freisprech-Loop, spricht der selbst -> Hook bleibt stumm.
-[ -f "$HOME/.claude/voice-loop.lock" ] && exit 0
+# Sprechen Loop oder UI gerade selbst, bleibt der Hook stumm.
+voicelock_active && exit 0
 
 input=$(cat)
 

@@ -17,7 +17,7 @@ link() { mkdir -p "$(dirname "$2")"; ln -sfn "$1" "$2"; echo "  $2 -> ${1#$REPO/
 if [ "${1:-}" = "--uninstall" ]; then
   for f in bin/claude-say bin/claude-voice bin/claude-voice-ui \
            voice-ui/server.mjs voice-ui/index.html \
-           hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh; do
+           hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh hooks/lib/voicelock.sh; do
     [ -L "$C/$f" ] && rm -f "$C/$f" && echo "  entfernt: $C/$f"
   done
   python3 - "$C/settings.json" <<'PY'
@@ -55,6 +55,7 @@ link "$REPO/ui/index.html"           "$C/voice-ui/index.html"
 link "$REPO/hooks/speak-answer.sh"   "$HOOK"
 link "$REPO/hooks/voice"             "$C/hooks/voice"
 link "$REPO/hooks/lib/speakable.sh"  "$C/hooks/lib/speakable.sh"
+link "$REPO/hooks/lib/voicelock.sh"  "$C/hooks/lib/voicelock.sh"
 
 echo
 echo "Konfiguration:"

@@ -14,9 +14,9 @@ while [ $# -gt 0 ]; do
 done
 
 # Der Vorlese-Hook muss schweigen — die UI spricht selbst.
-LOCK="$HOME/.claude/voice-loop.lock"
-: > "$LOCK"
-cleanup() { rm -f "$LOCK"; pkill -x say 2>/dev/null; }
+source "$HOME/.claude/hooks/lib/voicelock.sh"
+voicelock_acquire
+cleanup() { voicelock_release; pkill -x say 2>/dev/null; }
 trap cleanup EXIT INT TERM
 
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then

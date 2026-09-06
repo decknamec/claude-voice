@@ -31,8 +31,8 @@ VOCAB="Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, V
 [ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
 
 source "$HOME/.claude/hooks/lib/speakable.sh"
+source "$HOME/.claude/hooks/lib/voicelock.sh"
 
-LOCK="$HOME/.claude/voice-loop.lock"
 SESSION_FILE="$HOME/.claude/voice-loop-session"
 WORK=$(mktemp -d)
 WAV="$WORK/in.wav"
@@ -49,9 +49,9 @@ done
 
 [ -f "$MODEL" ] || { echo "Modell fehlt: $MODEL" >&2; exit 1; }
 
-cleanup() { pkill -x say 2>/dev/null; rm -f "$LOCK"; rm -rf "$WORK"; echo; echo "Tschüss."; }
+cleanup() { pkill -x say 2>/dev/null; voicelock_release; rm -rf "$WORK"; echo; echo "Tschüss."; }
 trap cleanup EXIT INT TERM
-: > "$LOCK"   # sagt speak-answer.sh: Finger weg, ich spreche selbst
+voicelock_acquire   # sagt speak-answer.sh: Finger weg, ich spreche selbst
 
 if $resume && [ -s "$SESSION_FILE" ]; then
   SID=$(cat "$SESSION_FILE"); first=false

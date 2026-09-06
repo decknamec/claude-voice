@@ -79,8 +79,10 @@ Mikro ──> sox rec ──> whisper.cpp ──> claude -p ──> claude-say �
            erkennen)                    Session)      oder say)
 ```
 
-Loop und UI legen `~/.claude/voice-loop.lock` an, solange sie laufen. Der Stop-Hook
-schweigt dann — sonst spräche jede Antwort doppelt.
+Loop und UI melden sich für ihre Laufzeit in `~/.claude/voice-locks/` an (eine Datei
+pro PID). Der Stop-Hook schweigt, solange dort ein lebender Prozess steht — sonst
+spräche jede Antwort doppelt. Tote Einträge nach einem Absturz werden beim nächsten
+Blick aufgeräumt, und zwei parallele Instanzen melden sich nicht gegenseitig ab.
 
 Antworten im Loop und in der UI sind per `--append-system-prompt` auf drei bis vier
 Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.

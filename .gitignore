@@ -21,3 +21,7 @@ node_modules/
 # Der React-Bau ist ein Ergebnis, keine Quelle.
 app/dist/
 app/node_modules/
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+app/tsconfig.tsbuildinfo

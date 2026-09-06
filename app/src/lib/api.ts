@@ -3,7 +3,19 @@ import type {
   StatusBericht, Stats, VerlaufBlock
 } from './types'
 
-export const TOKEN = new URLSearchParams(location.search).get('token') || ''
+/** Das Token steht in der URL, aber in der Desktop-Schale putzen wir es dort
+ *  weg — und ein Neuladen (Cmd-R) hätte danach keins mehr. Also einmal in den
+ *  Sitzungsspeicher legen, der genau so lange lebt wie das Fenster. */
+function holToken (): string {
+  const ausUrl = new URLSearchParams(location.search).get('token')
+  if (ausUrl) {
+    try { sessionStorage.setItem('cv-token', ausUrl) } catch { /* privater Modus */ }
+    return ausUrl
+  }
+  try { return sessionStorage.getItem('cv-token') ?? '' } catch { return '' }
+}
+
+export const TOKEN = holToken()
 
 export class ApiFehler extends Error {
   code: string

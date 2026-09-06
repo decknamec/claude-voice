@@ -972,6 +972,20 @@ const server = createServer(async (req, res) => {
 
 // Ohne die Signal-Handler ueberlebt whisper-server jedes Ctrl-C und jedes kill
 // und haelt Port und Modellspeicher weiter — der Fall, der die Waisen erzeugt hat.
+// Stirbt der Elternprozess hart — die Desktop-Schale abgeschossen, das
+// Terminal zugeklappt —, bekommen wir kein Signal, und der Server lebt als
+// Waise weiter. Mitsamt whisper-server und dessen halbem Gigabyte Modell.
+// Also selbst nachsehen: wird 1 unser Elternteil, sind wir verwaist.
+if (process.ppid !== 1) {
+  const wache = setInterval(() => {
+    if (process.ppid === 1) {
+      stopWhisper()
+      process.exit(0)
+    }
+  }, 2000)
+  wache.unref()
+}
+
 process.on('exit', stopWhisper)
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(sig, () => { stopWhisper(); process.exit(0) })

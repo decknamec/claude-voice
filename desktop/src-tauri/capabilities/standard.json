@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "standard",
+  "description": "Was die Seite darf. Sie kommt vom lokalen Server, deshalb steht die Herkunft ausdruecklich drin.",
+  "windows": ["haupt", "fehler"],
+  "remote": { "urls": ["http://127.0.0.1:*", "http://localhost:*"] },
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize",
+    "notification:default"
+  ]
+}

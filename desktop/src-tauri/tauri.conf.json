@@ -1,0 +1,25 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Claude Voice",
+  "version": "0.1.0",
+  "identifier": "io.relationflow.claude-voice",
+  "build": { "frontendDist": "../leer" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "macOSPrivateApi": true,
+    "security": {
+      "csp": null,
+      "capabilities": ["standard"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"],
+    "macOS": { "minimumSystemVersion": "13.0" },
+    "category": "Productivity",
+    "shortDescription": "Mit Claude Code sprechen",
+    "longDescription": "Sprachoberflaeche fuer Claude Code: lokale Erkennung mit whisper.cpp, Freigaben, Werkzeugspur."
+  }
+}

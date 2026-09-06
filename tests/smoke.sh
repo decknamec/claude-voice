@@ -110,6 +110,28 @@ t "install.sh verlinkt agent-loop.mjs" \
 t "Schleife findet ihre Datei auch ohne Installation" \
   "grep -q 'dirname \"\$0\")/..' '$REPO/bin/claude-voice'"
 
+echo "Desktop-Schale"
+# cargo build dauert zu lange fuer einen Rauchtest — geprueft wird, was ohne
+# Uebersetzer nachweisbar ist.
+t "Mikrofon-Erlaubnis im Buendel angemeldet" \
+  "grep -q NSMicrophoneUsageDescription '$REPO/desktop/src-tauri/Info.plist'" \
+  "ohne den Eintrag beendet macOS die App beim ersten getUserMedia hart"
+t "Fenster laedt den lokalen Server, nichts Mitgeliefertes" \
+  "grep -q 'WebviewUrl::External' '$REPO/desktop/src-tauri/src/main.rs'"
+t "PATH kommt aus der Login-Shell" \
+  "grep -q 'fn login_pfad' '$REPO/desktop/src-tauri/src/main.rs'" \
+  "aus dem Finder gestartet ist node sonst nicht auffindbar"
+t "Aufraeumen haengt nicht nur am Fensterschliessen" \
+  "grep -q 'RunEvent::Exit' '$REPO/desktop/src-tauri/src/main.rs'"
+t "Server bemerkt, wenn er verwaist" \
+  "grep -q 'process.ppid === 1' '$REPO/ui/server.mjs'" \
+  "sonst ueberlebt whisper-server mit seinem halben Gigabyte die App"
+t "Token ueberlebt ein Neuladen" \
+  "grep -q \"sessionStorage.setItem('cv-token'\" '$REPO/app/src/lib/api.ts'" \
+  "die Schale putzt es aus der URL, Cmd-R haette danach keins mehr"
+t "desktop-Bauordner sind ignoriert" \
+  "grep -q '^desktop/src-tauri/target/' '$REPO/.gitignore'"
+
 echo "React-Oberflaeche"
 t "TypeScript ist fehlerfrei" \
   "cd '$REPO/app' && npx --no-install tsc -b --noEmit" \

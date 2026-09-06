@@ -8,7 +8,11 @@ MAX_CHARS=600
 # Key setzen (nur du, landet im Schlüsselbund):
 #   security add-generic-password -a "$USER" -s elevenlabs-api-key -w
 # Danach:  claude-say --doctor   und   claude-say --list
-# Key aus 1Password statt Schlüsselbund (Referenz finden: claude-say --find-op):
+# Am einfachsten: ~/.claude/voice.env anlegen mit
+#   ELEVENLABS_API_KEY=dein-key
+# und chmod 600. Liegt im Klartext, dafür ohne Abhängigkeit von op/Schlüsselbund.
+#
+# Oder aus 1Password (Referenz finden: claude-say --find-op):
 # EL_KEY_OP_REF="op://Personal/Elevenlabs API KEY/password"
 # EL_KEY_OP_ACCOUNT=...          # nur nötig bei mehreren op-Accounts
 # EL_VOICE_ID=...                # leer = erste Stimme des Accounts

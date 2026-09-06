@@ -29,16 +29,10 @@ EL_KEY_OP_ACCOUNT=""              # nötig, wenn mehrere op-Accounts konfigurier
 [ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
 [ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
 
-api_key() {
-  [ -n "${ELEVENLABS_API_KEY:-}" ] && { printf '%s' "$ELEVENLABS_API_KEY"; return 0; }
-  if [ -n "$EL_KEY_OP_REF" ] && command -v op >/dev/null 2>&1; then
-    local v opargs=(); [ -n "$EL_KEY_OP_ACCOUNT" ] && opargs=(--account "$EL_KEY_OP_ACCOUNT")
-    v=$(op read --no-newline "${opargs[@]}" "$EL_KEY_OP_REF" 2>/dev/null)
-    [ -n "$v" ] && { printf '%s' "$v"; return 0; }
-  fi
-  security find-generic-password -s elevenlabs-api-key -w 2>/dev/null && return 0
-  return 1
-}
+source "$HOME/.claude/hooks/lib/elkey.sh"
+# Gibt den Key auf stdout — nur für die lokalen Aufrufe unten, nie geloggt.
+api_key() { el_resolve_key || return 1; printf '%s' "$ELEVENLABS_API_KEY"; }
+
 
 fallback() { say -v "$VOICE" -r "$RATE" -- "$1"; }
 
@@ -65,10 +59,7 @@ for m in json.load(sys.stdin):
     exit 0 ;;
   --doctor)
     if key=$(api_key); then
-      src="Schlüsselbund"
-      [ -n "${ELEVENLABS_API_KEY:-}" ] && src="Umgebungsvariable"
-      [ -z "${ELEVENLABS_API_KEY:-}" ] && [ -n "$EL_KEY_OP_REF" ] && src="1Password ($EL_KEY_OP_REF)"
-      echo "Key: gefunden über $src (${#key} Zeichen)"
+      echo "Key: gefunden über $EL_KEY_SOURCE (${#key} Zeichen)"
     else
       echo "Key: fehlt -> nutzt macOS say ($VOICE)"
       command -v op >/dev/null 2>&1 && ! op whoami >/dev/null 2>&1 && \

@@ -14,7 +14,13 @@ while [ $# -gt 0 ]; do
 done
 
 # Der Vorlese-Hook muss schweigen — die UI spricht selbst.
+[ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
+[ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
 source "$HOME/.claude/hooks/lib/voicelock.sh"
+source "$HOME/.claude/hooks/lib/elkey.sh"
+
+# Einmal auflösen; node vererbt die Variable an jeden claude-say-Aufruf.
+el_resolve_key && export ELEVENLABS_API_KEY
 voicelock_acquire
 cleanup() { voicelock_release; pkill -x say 2>/dev/null; }
 trap cleanup EXIT INT TERM

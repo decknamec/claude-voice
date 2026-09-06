@@ -32,6 +32,11 @@ VOCAB="Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, V
 
 source "$HOME/.claude/hooks/lib/speakable.sh"
 source "$HOME/.claude/hooks/lib/voicelock.sh"
+source "$HOME/.claude/hooks/lib/elkey.sh"
+
+# Einmal auflösen und vererben: sonst zahlt jeder gesprochene Satz den
+# 1Password-Zugriff erneut.
+el_resolve_key && export ELEVENLABS_API_KEY
 
 SESSION_FILE="$HOME/.claude/voice-loop-session"
 WORK=$(mktemp -d)
@@ -78,8 +83,10 @@ CL_ARGS=(-p --output-format text --permission-mode "$PERMISSION_MODE"
          --append-system-prompt "$VOICE_SYSTEM_PROMPT")
 [ -n "$CLAUDE_MODEL" ] && CL_ARGS+=(--model "$CLAUDE_MODEL")
 
-printf '\n\033[1mclaude-voice\033[0m  %s | %s | %s\n' \
-  "$(basename "$PWD")" "$PERMISSION_MODE" "$([ "$first" = true ] && echo 'neue Session' || echo "resume ${SID:0:8}")"
+printf '\n\033[1mclaude-voice\033[0m  %s | %s | %s | Stimme: %s\n' \
+  "$(basename "$PWD")" "$PERMISSION_MODE" \
+  "$([ "$first" = true ] && echo 'neue Session' || echo "resume ${SID:0:8}")" \
+  "$([ -n "${ELEVENLABS_API_KEY:-}" ] && echo "ElevenLabs" || echo "$VOICE")"
 echo 'Sprich einfach los. Aufnahme stoppt nach kurzer Stille. "stopp" beendet.'
 
 idle=0

@@ -8,6 +8,9 @@ voice-enabled
 voice-loop.lock
 voice-locks/
 .elevenlabs-voice
+# Keys niemals ins Repo — die echte Datei liegt ohnehin in ~/.claude/
+*.env
+voice.env
 # Persönliche Konfiguration — im Repo liegen nur die .example-Dateien
 conf/voice.conf
 conf/voice-loop.conf

@@ -1,0 +1,9 @@
+{
+  "name": "claude-voice-ui",
+  "private": true,
+  "type": "module",
+  "description": "Lokaler Backend-Server der Voice-UI",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.263"
+  }
+}

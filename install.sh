@@ -35,7 +35,7 @@ fi
 
 echo "Abhängigkeiten:"
 missing=()
-for t in whisper-cli rec sox ffmpeg node jq curl python3 say afplay; do
+for t in whisper-cli whisper-server rec sox ffmpeg node npm jq curl python3 say afplay; do
   if command -v "$t" >/dev/null 2>&1; then printf "  ok   %s\n" "$t"
   else printf "  FEHLT %s\n" "$t"; missing+=("$t"); fi
 done
@@ -80,6 +80,17 @@ else
 fi
 
 echo
+echo "UI-Abhängigkeiten:"
+if [ -d "$REPO/ui/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
+  echo "  Agent SDK vorhanden"
+elif command -v npm >/dev/null 2>&1; then
+  echo "  installiere Agent SDK…"
+  (cd "$REPO/ui" && npm install --silent) && echo "  ok" || echo "  FEHLGESCHLAGEN — später: cd ui && npm install"
+else
+  echo "  npm fehlt — die Browser-UI bleibt ohne Agent SDK unbenutzbar"
+fi
+
+echo
 echo "Piper (lokales TTS, optional):"
 if command -v piper >/dev/null 2>&1 || [ -x "$HOME/.local/bin/piper" ]; then
   echo "  piper vorhanden"
@@ -111,3 +122,4 @@ echo "  1) ~/.claude/bin in den PATH (fish: fish_add_path -g ~/.claude/bin)"
 echo "  2) Vorlesen anschalten:  ~/.claude/hooks/voice on"
 echo "  3) Optional ElevenLabs:  security add-generic-password -a \"\$USER\" -s elevenlabs-api-key -w"
 echo "  4) Starten:  claude-voice   oder   claude-voice-ui"
+echo "  5) Prüfen:   tests/smoke.sh"

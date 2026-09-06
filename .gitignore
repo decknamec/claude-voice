@@ -14,3 +14,5 @@ voice.env
 # Persönliche Konfiguration — im Repo liegen nur die .example-Dateien
 conf/voice.conf
 conf/voice-loop.conf
+node_modules/
+package-lock.json

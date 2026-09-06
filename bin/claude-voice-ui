@@ -31,13 +31,28 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 1
 fi
 
+# Der Server braucht das Agent SDK. Beim ersten Start einmal holen.
+UI_DIR="$(cd "$(dirname "$(readlink "$HOME/.claude/voice-ui/server.mjs" || echo "$HOME/.claude/voice-ui/server.mjs")")" && pwd)"
+if [ ! -d "$UI_DIR/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
+  echo "Installiere das Agent SDK (einmalig)…"
+  (cd "$UI_DIR" && npm install --silent) || {
+    echo "npm install fehlgeschlagen — siehe $UI_DIR" >&2; exit 1; }
+fi
+
+# Token statt bloßem "nur localhost": eine fremde Webseite kann es nicht lesen,
+# weil es nur in unserer eigenen URL steht.
+TOKEN=$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
+export VOICE_UI_TOKEN="$TOKEN"
+
 VOICE_UI_PORT="$PORT" node "$HOME/.claude/voice-ui/server.mjs" &
 SRV=$!
 
-for _ in $(seq 1 40); do
-  curl -sf "http://127.0.0.1:$PORT/api/config" >/dev/null 2>&1 && break
+for _ in $(seq 1 120); do
+  curl -sf -H "x-voice-token: $TOKEN" "http://127.0.0.1:$PORT/api/config" >/dev/null 2>&1 && break
   sleep 0.1
 done
-[ "$OPEN" = 1 ] && open "http://127.0.0.1:$PORT"
-echo "Läuft auf http://127.0.0.1:$PORT — Ctrl-C beendet."
+URL="http://127.0.0.1:$PORT/?token=$TOKEN"
+[ "$OPEN" = 1 ] && open "$URL"
+echo "Läuft auf $URL"
+echo "Ctrl-C beendet. Ohne das Token in der URL antwortet der Server nicht."
 wait $SRV

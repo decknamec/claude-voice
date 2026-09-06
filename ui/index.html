@@ -175,6 +175,44 @@ body[data-state="thinking"] .dots{opacity:1}
 .msg.err{border-color:var(--err);color:var(--err)}
 .msg .meta{font-size:11px;color:var(--fg-dim);margin-top:6px;opacity:.7}
 
+/* Freigabe: die einzige Stelle, an der die UI den Nutzer aktiv blockiert —
+   entsprechend deutlich, aber ohne Alarmfarbe. Entrance mit Anticipation. */
+.perm{
+  border:1px solid var(--think); border-radius:14px; padding:13px 15px;
+  background:var(--panel); box-shadow:var(--shadow);
+  animation:permin var(--t-slow) var(--e-out) both;
+}
+@keyframes permin{
+  from{opacity:0;transform:translateY(14px) scale(.985)}
+  to{opacity:1;transform:none}
+}
+.perm .who{color:var(--think)}
+.perm pre{
+  margin:8px 0 0; padding:9px 11px; border-radius:9px; background:var(--bg);
+  border:1px solid var(--line); font-size:12px; line-height:1.45;
+  overflow-x:auto; white-space:pre-wrap; word-break:break-word; max-height:190px;
+}
+.perm .row{display:flex;gap:8px;margin-top:11px}
+.perm button{
+  font:inherit; font-size:13px; padding:6px 14px; border-radius:9px; cursor:pointer;
+  border:1px solid var(--line); background:var(--panel); color:var(--fg);
+  transition:transform var(--t-quick) var(--e), border-color var(--t-quick) var(--e),
+             background var(--t-quick) var(--e);
+}
+.perm button:active{transform:scale(.96)}
+.perm button.ok{border-color:var(--listen);color:var(--listen)}
+.perm button.ok:hover{background:var(--listen);color:var(--panel)}
+.perm button.no:hover{border-color:var(--err);color:var(--err)}
+.perm.answered{opacity:.5;border-color:var(--line)}
+.perm.answered .row{display:none}
+
+/* Laufender Text bekommt eine Schreibmarke, damit man sieht, dass es weitergeht. */
+.msg.live .body::after{
+  content:"▍"; margin-left:1px; color:var(--fg-dim);
+  animation:caret 1.05s steps(1) infinite;
+}
+@keyframes caret{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+
 /* Fehler: 3 Oszillationen, keine Überschwinger — Fehler sollen fest wirken. */
 body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}
@@ -195,6 +233,7 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <select class="chip sel" id="voice" title="Stimme"></select>
   <span class="chip" id="cfg" title="Modell · Berechtigungen">…</span>
   <button class="chip" id="reset" title="Neue Session beginnen">neue Session</button>
+  <button class="chip" id="stop" title="Laufenden Turn abbrechen (Esc)">abbrechen</button>
   <button class="chip danger" id="quit" title="Server beenden und Session schließen">beenden</button>
 </header>
 
@@ -222,10 +261,12 @@ const orb = $('#orb'), label = $('#label'), log = $('#log'), hint = $('#hint')
 const viz = $('#viz'), ctx = viz.getContext('2d')
 
 const GLOW = { idle:'--accent', listening:'--listen', transcribing:'--accent',
-               thinking:'--think', speaking:'--speak', error:'--err', off:'--fg-dim' }
+               thinking:'--think', speaking:'--speak', error:'--err', off:'--fg-dim',
+               waiting:'--think' }
 const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…',
                thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler',
-               off:'Beendet — das Fenster kann zu' }
+               off:'Beendet — das Fenster kann zu',
+               waiting:'Wartet auf deine Freigabe' }
 
 let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
 
@@ -324,8 +365,12 @@ function stopRec () {
   if (rec && rec.state === 'recording') rec.stop()
 }
 
+// Der Server verlangt das Token bei jedem /api/-Aufruf. Es steht in unserer
+// eigenen URL, also kann nur eine gleichherkünftige Seite es lesen.
+const TOKEN = new URLSearchParams(location.search).get('token') || ''
 const post = (path, body, type) => fetch(path, {
-  method:'POST', body, headers: type ? { 'content-type':type } : undefined
+  method:'POST', body,
+  headers: { 'x-voice-token': TOKEN, ...(type ? { 'content-type':type } : {}) }
 }).then(async r => {
   const j = await r.json().catch(() => ({ error:'ungültige Antwort' }))
   if (!r.ok || j.error) throw new Error(j.error || r.statusText)
@@ -342,15 +387,10 @@ async function finish () {
     if (!said) { setState('idle'); busy = false; label.textContent = 'Nichts verstanden'; return }
     add('Du', said, 'me', sttMs + ' ms lokal transkribiert')
 
+    // Ab hier übernimmt der Ereignisstrom: Text, Freigaben und das Ende des
+    // Turns kommen über SSE, nicht als Antwort auf diesen Aufruf.
     setState('thinking')
-    const { reply, ms } = await post('/api/ask', JSON.stringify({ text: said }), 'application/json')
-    add('Claude', reply, '', (ms / 1000).toFixed(1) + ' s')
-
-    setState('speaking')
-    await post('/api/speak', JSON.stringify({
-      text: reply, backend: pick.backend, voice: pick.voice
-    }), 'application/json')
-    setState('idle')
+    await post('/api/say', JSON.stringify({ text: said }), 'application/json')
   } catch (e) {
     setState('error'); add('Fehler', e.message, 'err')
     setTimeout(() => setState('idle'), 1600)
@@ -362,7 +402,7 @@ orb.addEventListener('click', () => state === 'listening' ? stopRec() : start())
 let held = false
 addEventListener('keydown', e => {
   if (e.code === 'Space' && !e.repeat && !held) { e.preventDefault(); held = true; start() }
-  if (e.code === 'Escape') { post('/api/stop', '{}', 'application/json').catch(() => {}) }
+  if (e.code === 'Escape') { e.preventDefault(); interrupt() }
 })
 addEventListener('keyup', e => {
   if (e.code === 'Space' && held) { e.preventDefault(); held = false; stopRec() }
@@ -370,7 +410,8 @@ addEventListener('keyup', e => {
 
 $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
-  log.innerHTML = ''; label.textContent = 'Neue Session'
+  log.innerHTML = ''; live = null; busy = false
+  setState('idle'); label.textContent = 'Neue Session'
 })
 
 $('#quit').addEventListener('click', async () => {
@@ -379,8 +420,96 @@ $('#quit').addEventListener('click', async () => {
   // Der Server antwortet noch, bevor er sich abbaut — schlägt fetch trotzdem
   // fehl, ist er schon weg, und das Ergebnis für den Nutzer ist dasselbe.
   await post('/api/shutdown', '{}', 'application/json').catch(() => {})
+  es.close()
   setState('off')
 })
+
+// ── Ereignisstrom ────────────────────────────────────────────────────
+// Eine persistente Session auf der Serverseite heißt: der Server redet von
+// sich aus. Alles unterhalb eines Turns läuft über diesen Kanal.
+let live = null   // die Blase, in die gerade Text tropft
+
+function liveBubble () {
+  if (live) return live
+  const el = add('Claude', '', 'live')
+  live = el
+  return el
+}
+
+const es = new EventSource('/api/events?token=' + encodeURIComponent(TOKEN))
+
+es.addEventListener('delta', e => {
+  const { text } = JSON.parse(e.data)
+  const el = liveBubble()
+  el.querySelector('.body').textContent += text
+  if (state !== 'speaking') setState('speaking')
+  el.scrollIntoView({ behavior:'smooth', block:'end' })
+})
+
+es.addEventListener('message', e => {
+  // Die vollständige Nachricht ersetzt den zusammengetropften Text.
+  const { text } = JSON.parse(e.data)
+  const el = liveBubble()
+  el.querySelector('.body').textContent = text
+  el.classList.remove('live')
+  live = null
+})
+
+es.addEventListener('done', () => {
+  if (live) { live.classList.remove('live'); live = null }
+  setState('idle')
+  busy = false
+})
+
+es.addEventListener('error', e => {
+  try {
+    const { message } = JSON.parse(e.data)
+    add('Fehler', message, 'err'); setState('error')
+    setTimeout(() => setState('idle'), 1600)
+  } catch {}   // Verbindungsabbrüche kommen ohne data — EventSource verbindet selbst neu
+  busy = false
+})
+
+es.addEventListener('state', e => {
+  const { state: st } = JSON.parse(e.data)
+  if (st === 'idle') { setState('idle'); busy = false }
+})
+
+// Freigabe: der Server hält den Tool-Aufruf an, bis hier geantwortet wird.
+es.addEventListener('permission', e => {
+  const { id, tool, input } = JSON.parse(e.data)
+  setState('waiting')
+  const el = document.createElement('div')
+  el.className = 'perm'
+  el.innerHTML = '<div class="who"></div><div class="body"></div>' +
+                 '<pre></pre><div class="row">' +
+                 '<button class="ok">Erlauben</button>' +
+                 '<button class="no">Ablehnen</button></div>'
+  el.querySelector('.who').textContent = 'Freigabe erforderlich'
+  el.querySelector('.body').textContent = `Claude möchte ${tool} benutzen.`
+  el.querySelector('pre').textContent = JSON.stringify(input, null, 2)
+  const answer = behavior => {
+    el.classList.add('answered')
+    el.querySelector('.body').textContent =
+      `${tool} — ${behavior === 'allow' ? 'erlaubt' : 'abgelehnt'}`
+    setState('thinking')
+    post('/api/permission', JSON.stringify({ id, behavior }), 'application/json')
+      .catch(err => add('Fehler', err.message, 'err'))
+  }
+  el.querySelector('.ok').addEventListener('click', () => answer('allow'))
+  el.querySelector('.no').addEventListener('click', () => answer('deny'))
+  log.append(el)
+  el.scrollIntoView({ behavior:'smooth', block:'end' })
+})
+
+// Abbruch: hält Sprachausgabe und laufenden Turn an. Das ist das Barge-in.
+async function interrupt () {
+  await post('/api/interrupt', '{}', 'application/json').catch(() => {})
+  if (live) { live.classList.remove('live'); live = null }
+  busy = false
+  setState('idle')
+}
+$('#stop').addEventListener('click', interrupt)
 
 // ── Backend- und Stimmenwahl ─────────────────────────────────────────
 let BACKENDS = [], pick = { backend: null, voice: null }
@@ -409,7 +538,7 @@ function fillVoices () {
   }
 }
 
-fetch('/api/backends').then(r => r.json()).then(d => {
+fetch('/api/backends', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).then(d => {
   BACKENDS = d.backends
   const sel = $('#backend')
   sel.innerHTML = ''
@@ -432,7 +561,7 @@ $('#backend').addEventListener('change', e => {
 })
 $('#voice').addEventListener('change', e => { pick.voice = e.target.value; remember() })
 
-fetch('/api/config').then(r => r.json()).then(c => {
+fetch('/api/config', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).then(c => {
   $('#cfg').textContent = `${c.model} · ${c.permissionMode}`
 }).catch(() => {})
 

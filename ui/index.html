@@ -77,6 +77,19 @@ button.chip:active{transform:scale(.96)}
 
 button.chip.danger:hover{color:var(--err);border-color:var(--err)}
 
+select.sel{
+  font:inherit; font-size:12.5px; color:var(--fg); cursor:pointer;
+  max-width:190px; appearance:none; padding-right:22px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--fg-dim) 50%),
+                   linear-gradient(135deg,var(--fg-dim) 50%,transparent 50%);
+  background-position:right 11px center,right 7px center;
+  background-size:4px 4px,4px 4px; background-repeat:no-repeat;
+  transition:border-color var(--t-quick) var(--e);
+}
+select.sel:hover{border-color:var(--fg-dim)}
+select.sel option:disabled{color:var(--fg-dim);opacity:.5}
+select.sel:disabled{opacity:.45;cursor:not-allowed}
+
 /* Abschlusszustand: die Seite wird ruhig gestellt statt einfach tot zu sein.
    Exit-Bewegung kürzer und beschleunigend — man verabschiedet sich zügig. */
 body[data-state="off"] .ambient{opacity:0;transition:opacity var(--t-std) var(--e-in)}
@@ -178,7 +191,9 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 <header>
   <span class="dot"></span><b>Claude Voice</b>
   <span class="sp"></span>
-  <span class="chip" id="cfg">…</span>
+  <select class="chip sel" id="backend" title="Sprachausgabe"></select>
+  <select class="chip sel" id="voice" title="Stimme"></select>
+  <span class="chip" id="cfg" title="Modell · Berechtigungen">…</span>
   <button class="chip" id="reset" title="Neue Session beginnen">neue Session</button>
   <button class="chip danger" id="quit" title="Server beenden und Session schließen">beenden</button>
 </header>
@@ -332,7 +347,9 @@ async function finish () {
     add('Claude', reply, '', (ms / 1000).toFixed(1) + ' s')
 
     setState('speaking')
-    await post('/api/speak', JSON.stringify({ text: reply }), 'application/json')
+    await post('/api/speak', JSON.stringify({
+      text: reply, backend: pick.backend, voice: pick.voice
+    }), 'application/json')
     setState('idle')
   } catch (e) {
     setState('error'); add('Fehler', e.message, 'err')
@@ -365,8 +382,58 @@ $('#quit').addEventListener('click', async () => {
   setState('off')
 })
 
+// ── Backend- und Stimmenwahl ─────────────────────────────────────────
+let BACKENDS = [], pick = { backend: null, voice: null }
+try { pick = { ...pick, ...JSON.parse(localStorage.getItem('claude-voice-tts') || '{}') } } catch {}
+const remember = () => localStorage.setItem('claude-voice-tts', JSON.stringify(pick))
+
+function fillVoices () {
+  const b = BACKENDS.find(x => x.id === pick.backend)
+  const sel = $('#voice')
+  sel.innerHTML = ''
+  if (!b || !b.voices.length) {
+    sel.disabled = true
+    sel.append(new Option(b && b.id === 'auto' ? 'Stimme aus Konfig' : '—', ''))
+    return
+  }
+  sel.disabled = false
+  for (const v of b.voices) {
+    const o = new Option(v.name, v.id)
+    o.selected = v.id === pick.voice
+    sel.append(o)
+  }
+  // Gemerkte Stimme gehört zu einem anderen Backend -> auf dessen Default zurück.
+  if (!b.voices.some(v => v.id === pick.voice)) {
+    pick.voice = b.voices.some(v => v.id === b.default) ? b.default : b.voices[0].id
+    sel.value = pick.voice
+  }
+}
+
+fetch('/api/backends').then(r => r.json()).then(d => {
+  BACKENDS = d.backends
+  const sel = $('#backend')
+  sel.innerHTML = ''
+  for (const b of BACKENDS) {
+    // Nicht verfügbare bleiben sichtbar, aber ausgegraut — mit dem Grund im
+    // Label, sonst rät man, warum ElevenLabs nicht wählbar ist.
+    const o = new Option(b.available ? b.label : `${b.label} — ${b.detail}`, b.id)
+    o.disabled = !b.available
+    o.title = b.detail
+    sel.append(o)
+  }
+  const avail = BACKENDS.filter(b => b.available).map(b => b.id)
+  if (!avail.includes(pick.backend)) pick.backend = avail.includes(d.active) ? d.active : avail[0]
+  sel.value = pick.backend
+  fillVoices(); remember()
+}).catch(() => { $('#backend').innerHTML = '<option>Backends nicht lesbar</option>' })
+
+$('#backend').addEventListener('change', e => {
+  pick.backend = e.target.value; pick.voice = null; fillVoices(); remember()
+})
+$('#voice').addEventListener('change', e => { pick.voice = e.target.value; remember() })
+
 fetch('/api/config').then(r => r.json()).then(c => {
-  $('#cfg').textContent = `${c.model} · ${c.permissionMode} · ${c.tts}`
+  $('#cfg').textContent = `${c.model} · ${c.permissionMode}`
 }).catch(() => {})
 
 setState('idle')

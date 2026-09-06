@@ -52,11 +52,14 @@ in der Konfig oder `--tts` beim Start:
 
 | Backend | Erzeugung | Kosten | Anmerkung |
 |---|---|---|---|
-| `piper` | ~0,7 s | – | lokal, offline, hörbar synthetischer |
-| `elevenlabs` | ~1,1 s | Credits | beste Qualität, braucht Netz |
+| `elevenlabs` | ~1,1 s | Credits | beste Qualität, braucht Netz und Key |
+| `edge` | ~0,5 s | – | Microsoft-Neural-Stimmen, kostenlos, ohne Key. **Nicht lokal** — geht über einen undokumentierten Endpunkt |
+| `piper` | ~0,7 s | – | lokal und offline, hörbar synthetischer |
 | `say` | sofort | – | macOS-Systemstimme, sprödeste Qualität |
 
-`auto` (Default) nimmt ElevenLabs wenn ein Key da ist, sonst Piper, sonst `say`.
+`auto` (Default) nimmt ElevenLabs wenn ein Key da ist, sonst Edge, Piper, `say`.
+In der Browser-UI lässt sich Backend und Stimme im Kopf umschalten; was nicht
+eingerichtet ist, erscheint ausgegraut mit dem Grund daneben.
 Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre die
 schlechteste Antwort, wenn man auf eine Sprachausgabe wartet.
 
@@ -64,6 +67,14 @@ schlechteste Antwort, wenn man auf eine Sprachausgabe wartet.
 claude-voice --tts piper
 claude-voice-ui --tts piper
 claude-say --backends        # was ist verfügbar und aktiv
+claude-say --tts edge --voice de-DE-ConradNeural "Text"
+```
+
+**Edge einrichten** (kostenlos, kein Key):
+
+```bash
+uv tool install edge-tts
+edge-tts --list-voices | grep ^de-
 ```
 
 **Piper einrichten** (lokal, kostenlos):

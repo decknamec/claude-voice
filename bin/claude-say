@@ -9,10 +9,12 @@
 #   claude-say --find-op            1Password-Referenz für den Key suchen
 #
 # Backends (TTS_BACKEND in der Konfig oder --tts):
-#   auto         ElevenLabs wenn ein Key da ist, sonst piper, sonst say
-#   piper        lokal, offline, schnell (~0,7 s), hörbar synthetischer
-#   elevenlabs   beste Qualität, kostet Credits, braucht Netz
-#   say          macOS-Systemstimme, sofort, aber sprödeste Qualität
+#   auto         ElevenLabs wenn ein Key da ist, sonst edge, piper, say
+#   elevenlabs   beste Qualität, kostet Credits, braucht Netz (~1,1 s)
+#   edge         Microsoft-Neural-Stimmen, kostenlos, ohne Key (~0,5 s).
+#                NICHT lokal — geht über einen undokumentierten Endpunkt.
+#   piper        lokal und offline (~0,7 s), hörbar synthetischer
+#   say          macOS-Systemstimme, sofort, sprödeste Qualität
 #
 # Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre
 # die schlechteste Antwort, wenn man gerade auf eine Sprachausgabe wartet.
@@ -31,6 +33,9 @@ VOICE=Anna; RATE=190
 PIPER_MODEL="$HOME/.claude/piper-voices/de_DE-thorsten-medium.onnx"
 PIPER_BIN=""                      # leer = automatisch suchen
 
+EDGE_VOICE=de-DE-SeraphinaMultilingualNeural
+EDGE_BIN=""
+
 EL_VOICE_ID=""                    # leer = erste Stimme des Accounts (siehe --list)
 EL_MODEL=eleven_turbo_v2_5
 EL_STABILITY=0.45
@@ -45,8 +50,23 @@ EL_KEY_OP_ACCOUNT=""
 source "$HOME/.claude/hooks/lib/elkey.sh"
 [ -n "$_TTS_FROM_ENV" ] && TTS_BACKEND="$_TTS_FROM_ENV"
 
-# --tts vor allem anderen auswerten, damit es die Konfig überstimmt.
-if [ "${1:-}" = "--tts" ]; then TTS_BACKEND="${2:-auto}"; shift 2; fi
+# --tts und --voice vor allem anderen auswerten, damit sie die Konfig überstimmen.
+_VOICE_OVERRIDE=""
+while true; do
+  case "${1:-}" in
+    --tts)   TTS_BACKEND="${2:-auto}"; shift 2 ;;
+    --voice) _VOICE_OVERRIDE="${2:-}"; shift 2 ;;
+    *) break ;;
+  esac
+done
+if [ -n "$_VOICE_OVERRIDE" ]; then
+  case "$TTS_BACKEND" in
+    piper)      PIPER_MODEL="$HOME/.claude/piper-voices/$_VOICE_OVERRIDE.onnx" ;;
+    edge)       EDGE_VOICE="$_VOICE_OVERRIDE" ;;
+    elevenlabs) EL_VOICE_ID="$_VOICE_OVERRIDE" ;;
+    say|*)      VOICE="$_VOICE_OVERRIDE" ;;
+  esac
+fi
 
 api_key() { el_resolve_key || return 1; printf '%s' "$ELEVENLABS_API_KEY"; }
 
@@ -60,6 +80,14 @@ piper_bin() {
 }
 piper_ready() { [ -f "$PIPER_MODEL" ] && piper_bin >/dev/null; }
 
+edge_bin() {
+  [ -n "$EDGE_BIN" ] && { printf '%s' "$EDGE_BIN"; return 0; }
+  command -v edge-tts 2>/dev/null && return 0
+  [ -x "$HOME/.local/bin/edge-tts" ] && { printf '%s' "$HOME/.local/bin/edge-tts"; return 0; }
+  return 1
+}
+edge_ready() { edge_bin >/dev/null; }
+
 speak_say()   { say -v "$VOICE" -r "$RATE" -- "$1"; }
 
 speak_piper() {
@@ -68,6 +96,15 @@ speak_piper() {
   [ -f "$PIPER_MODEL" ] || return 1
   tmp=$(mktemp -t claudesay).wav
   printf '%s' "$1" | "$bin" -m "$PIPER_MODEL" -f "$tmp" >/dev/null 2>&1
+  [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
+  afplay "$tmp"; rm -f "$tmp"
+}
+
+speak_edge() {
+  local bin tmp
+  bin=$(edge_bin) || return 1
+  tmp=$(mktemp -t claudesay).mp3
+  "$bin" --voice "$EDGE_VOICE" --text "$1" --write-media "$tmp" >/dev/null 2>&1
   [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
   afplay "$tmp"; rm -f "$tmp"
 }
@@ -115,9 +152,59 @@ print(json.dumps({'text':os.environ['TEXT'],'model_id':os.environ['M'],'voice_se
 
 # ── Unterbefehle ─────────────────────────────────────────────────────
 case "${1:-}" in
+  --backends-json)
+    # Maschinenlesbar für die UI: was ist verfügbar, warum nicht, welche Stimmen.
+    # Eine Quelle der Wahrheit — die UI soll keine Textausgabe parsen müssen.
+    el_ok=false; el_detail="kein Key hinterlegt"
+    if el_resolve_key; then el_ok=true; el_detail="Key über $EL_KEY_SOURCE"; fi
+    p_ok=false; p_detail="piper oder Stimmmodell fehlt"
+    if piper_ready; then p_ok=true; p_detail="$(basename "$(piper_bin)")"; fi
+    e_ok=false; e_detail="edge-tts nicht installiert"
+    if edge_ready; then e_ok=true; e_detail="Microsoft Neural, ohne Key"; fi
+
+    say_voices=$(say -v '?' 2>/dev/null | grep de_DE | sed 's/ *de_DE.*//' | sed 's/ *$//')
+    piper_voices=$(ls "$HOME/.claude/piper-voices"/*.onnx 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.onnx$//')
+    edge_voices=""; $e_ok && edge_voices=$("$(edge_bin)" --list-voices 2>/dev/null | awk '/^de-/{print $1}')
+    el_voices=""
+    if $el_ok; then
+      el_voices=$(el_get voices 2>/dev/null | python3 -c "
+import json,sys
+try:
+    for v in json.load(sys.stdin).get('voices',[]): print(f\"{v['voice_id']}\t{v['name']}\")
+except Exception: pass")
+    fi
+
+    ACTIVE="$TTS_BACKEND" ELOK=$el_ok ELD="$el_detail" POK=$p_ok PD="$p_detail" \
+    EOK=$e_ok ED="$e_detail" SV="$say_voices" PV="$piper_voices" EV="$edge_voices" \
+    LV="$el_voices" DEFP="$(basename "$PIPER_MODEL" .onnx)" DEFE="$EDGE_VOICE" \
+    DEFL="$EL_VOICE_ID" DEFS="$VOICE" python3 -c "
+import json,os
+def lines(k): return [x for x in os.environ.get(k,'').split('\n') if x.strip()]
+def pairs(k):
+    out=[]
+    for x in lines(k):
+        a=x.split('\t')
+        out.append({'id':a[0],'name':a[1] if len(a)>1 else a[0]})
+    return out
+def plain(k): return [{'id':x,'name':x} for x in lines(k)]
+print(json.dumps({
+  'active': os.environ['ACTIVE'],
+  'backends': [
+    {'id':'auto','label':'Automatisch','available':True,'detail':'bestes verfügbares','voices':[],'default':''},
+    {'id':'elevenlabs','label':'ElevenLabs','available':os.environ['ELOK']=='true',
+     'detail':os.environ['ELD'],'voices':pairs('LV'),'default':os.environ['DEFL'],'network':True,'cost':True},
+    {'id':'edge','label':'Edge (Microsoft)','available':os.environ['EOK']=='true',
+     'detail':os.environ['ED'],'voices':plain('EV'),'default':os.environ['DEFE'],'network':True},
+    {'id':'piper','label':'Piper (lokal)','available':os.environ['POK']=='true',
+     'detail':os.environ['PD'],'voices':plain('PV'),'default':os.environ['DEFP']},
+    {'id':'say','label':'System (macOS)','available':True,
+     'detail':'immer verfügbar','voices':plain('SV'),'default':os.environ['DEFS']},
+  ]}))"
+    exit 0 ;;
   --backends)
     printf "  %-11s %s\n" "aktiv:" "$TTS_BACKEND"
     printf "  %-11s %s\n" "piper:" "$(piper_ready && echo "bereit ($(basename "$PIPER_MODEL"))" || echo "nicht eingerichtet")"
+    printf "  %-11s %s\n" "edge:" "$(edge_ready && echo "bereit ($EDGE_VOICE)" || echo "nicht installiert")"
     printf "  %-11s %s\n" "elevenlabs:" "$(el_resolve_key && echo "Key über $EL_KEY_SOURCE" || echo "kein Key")"
     printf "  %-11s %s\n" "say:" "immer verfügbar ($VOICE)"
     exit 0 ;;
@@ -172,12 +259,14 @@ TEXT="${1:-}"
 case "$TTS_BACKEND" in
   say)        speak_say "$TEXT" ;;
   piper)      speak_piper "$TEXT" || { echo "claude-say: piper fehlgeschlagen -> say" >&2; speak_say "$TEXT"; } ;;
+  edge)       speak_edge "$TEXT"  || { echo "claude-say: edge fehlgeschlagen -> say" >&2; speak_say "$TEXT"; } ;;
   elevenlabs) speak_elevenlabs "$TEXT" || { echo "claude-say: ElevenLabs fehlgeschlagen -> say" >&2; speak_say "$TEXT"; } ;;
   auto|*)
     if el_resolve_key; then
       speak_elevenlabs "$TEXT" && exit 0
       echo "claude-say: ElevenLabs fehlgeschlagen -> nächstes Backend" >&2
     fi
+    edge_ready  && speak_edge  "$TEXT" && exit 0
     piper_ready && speak_piper "$TEXT" && exit 0
     speak_say "$TEXT" ;;
 esac

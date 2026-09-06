@@ -1,3 +1,4 @@
+# EDGE_VOICE=de-DE-SeraphinaMultilingualNeural   # edge-tts --list-voices | grep ^de-
 # TTS_BACKEND=auto               # auto|piper|elevenlabs|say (siehe claude-say --backends)
 # PIPER_MODEL=~/.claude/piper-voices/de_DE-thorsten-medium.onnx
 # Stimme fürs Vorlesen. Auswahl anzeigen: ~/.claude/hooks/voice voices

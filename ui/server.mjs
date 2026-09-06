@@ -50,6 +50,8 @@ const run = (cmd, args, opts = {}) => new Promise(resolve => {
 
 let SESSION = null          // UUID der laufenden Voice-Session
 let sayProc = null
+let backendsCache = null    // Stimmlisten kosten Netzaufrufe; sie ändern sich
+                            // während einer Sitzung nicht.
 
 // Whisper halluziniert auf Stille gern Standardphrasen — dieselbe Liste wie im CLI-Loop.
 const JUNK = /^(\.|\[blank_audio\]|\(musik\)|untertitel.*|vielen dank[.!]?|.*amara\.org.*)$/i
@@ -86,11 +88,15 @@ async function ask (text, conf) {
 
 // Serverseitiges Sprechen: der Request löst erst auf, wenn `say` fertig ist —
 // so weiß die UI ohne Polling, wann der Speaking-State endet.
-function speak (text, conf) {
+function speak (text, conf, backend, voice) {
   return new Promise(resolve => {
     if (sayProc) { try { sayProc.kill() } catch {} }
-    // claude-say entscheidet selbst zwischen ElevenLabs und macOS say.
-    sayProc = spawn(join(HOME, '.claude/bin/claude-say'), [text], { stdio: 'ignore' })
+    // claude-say kennt die Backends; hier wird nur durchgereicht.
+    const args = []
+    if (backend) args.push('--tts', backend)
+    if (voice) args.push('--voice', voice)
+    args.push(text)
+    sayProc = spawn(join(HOME, '.claude/bin/claude-say'), args, { stdio: 'ignore' })
     sayProc.on('close', () => { sayProc = null; resolve() })
     sayProc.on('error', () => { sayProc = null; resolve() })
   })
@@ -147,9 +153,18 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { reply, ms: Date.now() - t0, session: SESSION })
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/backends') {
+      if (!backendsCache) {
+        const r = await run(join(HOME, '.claude/bin/claude-say'), ['--backends-json'])
+        try { backendsCache = JSON.parse(r.out) }
+        catch { return json(res, 500, { error: 'backends nicht lesbar: ' + (r.err || r.out).slice(0, 200) }) }
+      }
+      return json(res, 200, backendsCache)
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/speak') {
-      const { text } = JSON.parse((await body(req)).toString('utf8'))
-      await speak(String(text || '').slice(0, Number(conf.MAX_CHARS) * 2), conf)
+      const { text, backend, voice } = JSON.parse((await body(req)).toString('utf8'))
+      await speak(String(text || '').slice(0, Number(conf.MAX_CHARS) * 2), conf, backend, voice)
       return json(res, 200, { ok: true })
     }
 

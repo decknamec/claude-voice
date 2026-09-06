@@ -42,13 +42,44 @@ claude-voice-ui --port N
 ```
 
 Im Loop beendet „stopp" oder Ctrl-C. In der UI: Klick oder Leertaste halten zum
-Sprechen, Esc bricht die Ausgabe ab.
+Sprechen, Esc bricht die Ausgabe ab, „beenden" im Kopf fährt den Server herunter
+und schließt die Session.
 
 ## Sprachausgabe
 
-Alles spricht über `bin/claude-say`. Ohne Konfiguration nimmt es die macOS-Stimme.
-Liegt ein ElevenLabs-Key vor, nimmt es den — und fällt bei jedem API-Fehler
-(Kontingent leer, Key ungültig) still auf die Systemstimme zurück statt zu verstummen.
+Alles spricht über `bin/claude-say`. Drei Backends, umschaltbar per `TTS_BACKEND`
+in der Konfig oder `--tts` beim Start:
+
+| Backend | Erzeugung | Kosten | Anmerkung |
+|---|---|---|---|
+| `piper` | ~0,7 s | – | lokal, offline, hörbar synthetischer |
+| `elevenlabs` | ~1,1 s | Credits | beste Qualität, braucht Netz |
+| `say` | sofort | – | macOS-Systemstimme, sprödeste Qualität |
+
+`auto` (Default) nimmt ElevenLabs wenn ein Key da ist, sonst Piper, sonst `say`.
+Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre die
+schlechteste Antwort, wenn man auf eine Sprachausgabe wartet.
+
+```bash
+claude-voice --tts piper
+claude-voice-ui --tts piper
+claude-say --backends        # was ist verfügbar und aktiv
+```
+
+**Piper einrichten** (lokal, kostenlos):
+
+```bash
+uv tool install piper-tts
+mkdir -p ~/.claude/piper-voices && cd ~/.claude/piper-voices
+B=https://huggingface.co/rhasspy/piper-voices/resolve/main/de/de_DE
+curl -fLO $B/thorsten/medium/de_DE-thorsten-medium.onnx
+curl -fLO $B/thorsten/medium/de_DE-thorsten-medium.onnx.json
+```
+
+Andere deutsche Stimmen liegen unter `de/de_DE/` im selben Repository
+(kerstin, eva_k, karlsson, pavoque, ramona), Pfad dann in `PIPER_MODEL` eintragen.
+
+**ElevenLabs einrichten:** Liegt ein Key vor, wird er genutzt.
 
 ```bash
 security add-generic-password -a "$USER" -s elevenlabs-api-key -w
@@ -90,6 +121,8 @@ Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.
 ## Bekannte Grenzen
 
 - Nur macOS (`say`, `afplay`, sox-Aufnahme über CoreAudio).
+- Die Sprachausgabe ist nicht der Flaschenhals: ein Turn kostet ~13 s, davon ~1 s
+  das Sprechen. Der Rest ist der Start eines frischen `claude -p` je Äußerung.
 - Der Headless-Modus von `claude -p` verweigert ohne `--yolo` Tool-Aufrufe, die eine
   Bestätigung bräuchten — stillschweigend. Für echte Arbeit im Loop brauchst du das Flag.
 - Kein Wake-Word. Der Loop nimmt auf, sobald es laut genug wird.

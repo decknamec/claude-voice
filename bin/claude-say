@@ -1,138 +1,183 @@
 #!/usr/bin/env bash
-# Sprachausgabe für alle Voice-Wege (Hook, CLI-Loop, UI).
-# Nimmt ElevenLabs wenn ein Key da ist, sonst macOS `say`. Blockiert bis fertig.
+# Sprachausgabe für alle Voice-Wege (Hook, CLI-Loop, UI). Blockiert bis fertig.
 #
 #   claude-say "Text"
-#   claude-say --list          Stimmen + Modelle des Accounts anzeigen
-#   claude-say --doctor        Konfiguration prüfen
-#   claude-say --find-op       passende 1Password-Referenz suchen
+#   claude-say --tts piper "Text"   Backend für diesen Aufruf erzwingen
+#   claude-say --backends           zeigt, was verfügbar und aktiv ist
+#   claude-say --doctor             Konfiguration prüfen
+#   claude-say --list               ElevenLabs-Stimmen und -Modelle
+#   claude-say --find-op            1Password-Referenz für den Key suchen
 #
-# Key-Quellen, in dieser Reihenfolge:
-#   1. $ELEVENLABS_API_KEY
-#   2. EL_KEY_OP_REF in der Konfig, z.B. "op://Private/ElevenLabs/credential"
-#      -> der Key bleibt in 1Password und wird nur zur Laufzeit gelesen
-#   3. macOS-Schlüsselbund:
-#      security add-generic-password -a "$USER" -s elevenlabs-api-key -w
+# Backends (TTS_BACKEND in der Konfig oder --tts):
+#   auto         ElevenLabs wenn ein Key da ist, sonst piper, sonst say
+#   piper        lokal, offline, schnell (~0,7 s), hörbar synthetischer
+#   elevenlabs   beste Qualität, kostet Credits, braucht Netz
+#   say          macOS-Systemstimme, sofort, aber sprödeste Qualität
+#
+# Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre
+# die schlechteste Antwort, wenn man gerade auf eine Sprachausgabe wartet.
+#
+# ElevenLabs-Key, in dieser Reihenfolge: $ELEVENLABS_API_KEY,
+# ~/.claude/voice.env, 1Password (EL_KEY_OP_REF), macOS-Schlüsselbund.
 set -uo pipefail
 
+# Vorrang: --tts > geerbte Umgebung > Konfigdatei > Default. Die Umgebung muss
+# zwischengespeichert werden, weil die Zuweisung unten sie sonst überschreibt
+# und der Loop/die UI ihre Wahl nicht durchreichen könnten.
+_TTS_FROM_ENV="${TTS_BACKEND:-}"
+TTS_BACKEND=auto
 VOICE=Anna; RATE=190
+
+PIPER_MODEL="$HOME/.claude/piper-voices/de_DE-thorsten-medium.onnx"
+PIPER_BIN=""                      # leer = automatisch suchen
+
 EL_VOICE_ID=""                    # leer = erste Stimme des Accounts (siehe --list)
-EL_MODEL=eleven_turbo_v2_5        # Alternativen: eleven_flash_v2_5 (schneller),
-                                  # eleven_multilingual_v2 (schöner, träger)
+EL_MODEL=eleven_turbo_v2_5
 EL_STABILITY=0.45
 EL_SIMILARITY=0.75
-EL_SPEED=""                       # z.B. 1.05; leer = Modell-Default
+EL_SPEED=""
 EL_FORMAT=mp3_44100_128
-EL_KEY_OP_REF=""                  # 1Password-Referenz, siehe --find-op
-EL_KEY_OP_ACCOUNT=""              # nötig, wenn mehrere op-Accounts konfiguriert sind
+EL_KEY_OP_REF=""
+EL_KEY_OP_ACCOUNT=""
 # shellcheck disable=SC1090
 [ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
 [ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
-
 source "$HOME/.claude/hooks/lib/elkey.sh"
-# Gibt den Key auf stdout — nur für die lokalen Aufrufe unten, nie geloggt.
+[ -n "$_TTS_FROM_ENV" ] && TTS_BACKEND="$_TTS_FROM_ENV"
+
+# --tts vor allem anderen auswerten, damit es die Konfig überstimmt.
+if [ "${1:-}" = "--tts" ]; then TTS_BACKEND="${2:-auto}"; shift 2; fi
+
 api_key() { el_resolve_key || return 1; printf '%s' "$ELEVENLABS_API_KEY"; }
 
+# ── Backends ─────────────────────────────────────────────────────────
+piper_bin() {
+  [ -n "$PIPER_BIN" ] && { printf '%s' "$PIPER_BIN"; return 0; }
+  command -v piper 2>/dev/null && return 0
+  # uv tool install legt hier ab; der Hook erbt diesen PATH oft nicht.
+  [ -x "$HOME/.local/bin/piper" ] && { printf '%s' "$HOME/.local/bin/piper"; return 0; }
+  return 1
+}
+piper_ready() { [ -f "$PIPER_MODEL" ] && piper_bin >/dev/null; }
 
-fallback() { say -v "$VOICE" -r "$RATE" -- "$1"; }
+speak_say()   { say -v "$VOICE" -r "$RATE" -- "$1"; }
+
+speak_piper() {
+  local bin tmp
+  bin=$(piper_bin) || return 1
+  [ -f "$PIPER_MODEL" ] || return 1
+  tmp=$(mktemp -t claudesay).wav
+  printf '%s' "$1" | "$bin" -m "$PIPER_MODEL" -f "$tmp" >/dev/null 2>&1
+  [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
+  afplay "$tmp"; rm -f "$tmp"
+}
 
 el_get() {  # $1 = Pfad
   local key; key=$(api_key) || return 1
   curl -sS --max-time 15 -H "xi-api-key: $key" "https://api.elevenlabs.io/v1/$1"
 }
 
-case "${1:-}" in
-  --list)
-    key=$(api_key) || { echo "Kein Key. Siehe Kopf dieser Datei." >&2; exit 1; }
-    echo "== Stimmen =="
-    el_get voices | python3 -c "
-import json,sys
-for v in json.load(sys.stdin).get('voices',[]):
-    print(f\"  {v['voice_id']}  {v['name']}  ({v.get('labels',{}).get('language','?')})\")"
-    echo "== Modelle (nur mit Text-to-Speech) =="
-    el_get models | python3 -c "
-import json,sys
-for m in json.load(sys.stdin):
-    if m.get('can_do_text_to_speech'):
-        langs=[l['language_id'] for l in m.get('languages',[])]
-        print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}  {m.get('name','')}\")"
-    exit 0 ;;
-  --doctor)
-    # Direkt aufrufen statt über $(...): in einer Subshell käme EL_KEY_SOURCE
-    # nicht zurück.
-    if el_resolve_key; then
-      key="$ELEVENLABS_API_KEY"
-      echo "Key: gefunden über $EL_KEY_SOURCE (${#key} Zeichen)"
-    else
-      echo "Key: fehlt -> nutzt macOS say ($VOICE)"
-      command -v op >/dev/null 2>&1 && ! op whoami >/dev/null 2>&1 && \
-        echo "     Hinweis: op ist installiert, aber nicht angemeldet (eval \$(op signin))"
-      exit 0
-    fi
-    echo "Modell:  $EL_MODEL"
-    echo "Stimme:  ${EL_VOICE_ID:-<erste des Accounts>}"
-    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
-           -H "xi-api-key: $key" https://api.elevenlabs.io/v1/user 2>/dev/null)
-    echo "API:     HTTP $code $([ "$code" = 200 ] && echo '(ok)' || echo '(Key ungültig?)')"
-    exit 0 ;;
-  --find-op)
-    command -v op >/dev/null 2>&1 || { echo "op (1Password CLI) fehlt." >&2; exit 1; }
-    op whoami >/dev/null 2>&1 || { echo "Nicht angemeldet. Erst:  eval \$(op signin)" >&2; exit 1; }
-    echo "Kandidaten (nur Feldnamen, keine Werte):"
-    op item list --format=json 2>/dev/null | python3 -c "
-import json,subprocess,sys
-for it in json.load(sys.stdin):
-    if 'eleven' not in it.get('title','').lower(): continue
-    vault=it.get('vault',{}).get('name','?')
-    d=json.loads(subprocess.run(['op','item','get',it['id'],'--format=json'],
-                                capture_output=True,text=True).stdout or '{}')
-    for f in d.get('fields',[]):
-        if f.get('value'):
-            print(f\"  EL_KEY_OP_REF=\\\"op://{vault}/{it['title']}/{f.get('label') or f.get('id')}\\\"\")"
-    echo
-    echo "Passende Zeile in ~/.claude/voice.conf eintragen."
-    exit 0 ;;
-  -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-esac
+speak_elevenlabs() {
+  local key body tmp code
+  key=$(api_key) || return 1
 
-TEXT="${1:-}"
-[ -n "$TEXT" ] || exit 0
-
-key=$(api_key) || { fallback "$TEXT"; exit 0; }
-
-# Ohne konfigurierte Stimme die erste des Accounts nehmen und merken, damit der
-# Lookup nicht bei jedem Satz erneut über die Leitung geht.
-CACHE="$HOME/.claude/.elevenlabs-voice"
-if [ -z "$EL_VOICE_ID" ] && [ -s "$CACHE" ]; then EL_VOICE_ID=$(cat "$CACHE"); fi
-if [ -z "$EL_VOICE_ID" ]; then
-  EL_VOICE_ID=$(el_get voices | python3 -c "
+  # Ohne konfigurierte Stimme die erste des Accounts nehmen und merken, damit
+  # der Lookup nicht bei jedem Satz erneut über die Leitung geht.
+  local cache="$HOME/.claude/.elevenlabs-voice"
+  [ -z "$EL_VOICE_ID" ] && [ -s "$cache" ] && EL_VOICE_ID=$(cat "$cache")
+  if [ -z "$EL_VOICE_ID" ]; then
+    EL_VOICE_ID=$(el_get voices | python3 -c "
 import json,sys
 vs=json.load(sys.stdin).get('voices',[])
 print(vs[0]['voice_id'] if vs else '')" 2>/dev/null)
-  [ -n "$EL_VOICE_ID" ] && printf '%s' "$EL_VOICE_ID" > "$CACHE"
-fi
-[ -n "$EL_VOICE_ID" ] || { fallback "$TEXT"; exit 0; }
+    [ -n "$EL_VOICE_ID" ] && printf '%s' "$EL_VOICE_ID" > "$cache"
+  fi
+  [ -n "$EL_VOICE_ID" ] || return 1
 
-BODY=$(TEXT="$TEXT" M="$EL_MODEL" S="$EL_STABILITY" B="$EL_SIMILARITY" SP="$EL_SPEED" python3 -c "
+  body=$(TEXT="$1" M="$EL_MODEL" S="$EL_STABILITY" B="$EL_SIMILARITY" SP="$EL_SPEED" python3 -c "
 import json,os
 vs={'stability':float(os.environ['S']),'similarity_boost':float(os.environ['B'])}
 if os.environ['SP']: vs['speed']=float(os.environ['SP'])
 print(json.dumps({'text':os.environ['TEXT'],'model_id':os.environ['M'],'voice_settings':vs}))")
 
-TMP=$(mktemp -t claudesay).mp3
-trap 'rm -f "$TMP"' EXIT
+  tmp=$(mktemp -t claudesay).mp3
+  code=$(curl -sS --max-time 45 -o "$tmp" -w '%{http_code}' \
+    -X POST "https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}?output_format=${EL_FORMAT}" \
+    -H "xi-api-key: $key" -H 'content-type: application/json' \
+    --data-binary "$body" 2>/dev/null)
+  if [ "$code" != 200 ] || [ ! -s "$tmp" ]; then
+    echo "claude-say: ElevenLabs HTTP $code" >&2
+    head -c 300 "$tmp" >&2 2>/dev/null; echo >&2
+    rm -f "$tmp"; return 1
+  fi
+  afplay "$tmp"; rm -f "$tmp"
+}
 
-code=$(curl -sS --max-time 45 -o "$TMP" -w '%{http_code}' \
-  -X POST "https://api.elevenlabs.io/v1/text-to-speech/${EL_VOICE_ID}?output_format=${EL_FORMAT}" \
-  -H "xi-api-key: $key" -H 'content-type: application/json' \
-  --data-binary "$BODY" 2>/dev/null)
+# ── Unterbefehle ─────────────────────────────────────────────────────
+case "${1:-}" in
+  --backends)
+    printf "  %-11s %s\n" "aktiv:" "$TTS_BACKEND"
+    printf "  %-11s %s\n" "piper:" "$(piper_ready && echo "bereit ($(basename "$PIPER_MODEL"))" || echo "nicht eingerichtet")"
+    printf "  %-11s %s\n" "elevenlabs:" "$(el_resolve_key && echo "Key über $EL_KEY_SOURCE" || echo "kein Key")"
+    printf "  %-11s %s\n" "say:" "immer verfügbar ($VOICE)"
+    exit 0 ;;
+  --list)
+    key=$(api_key) || { echo "Kein Key." >&2; exit 1; }
+    echo "== Stimmen =="
+    el_get voices | python3 -c "
+import json,sys
+for v in json.load(sys.stdin).get('voices',[]):
+    print(f\"  {v['voice_id']}  {v['name']}\")"
+    echo "== Modelle =="
+    el_get models | python3 -c "
+import json,sys
+for m in json.load(sys.stdin):
+    if m.get('can_do_text_to_speech'):
+        langs=[l['language_id'] for l in m.get('languages',[])]
+        print(f\"  {m['model_id']:28} de={'ja' if 'de' in langs else 'nein'}\")"
+    exit 0 ;;
+  --doctor)
+    echo "Backend: $TTS_BACKEND"
+    echo "Piper:   $(piper_ready && echo "ok — $(piper_bin), $(basename "$PIPER_MODEL")" || echo "nicht eingerichtet")"
+    if el_resolve_key; then
+      echo "Key:     $EL_KEY_SOURCE (${#ELEVENLABS_API_KEY} Zeichen)"
+      code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+             -H "xi-api-key: $ELEVENLABS_API_KEY" https://api.elevenlabs.io/v1/user 2>/dev/null)
+      echo "API:     HTTP $code $([ "$code" = 200 ] && echo '(ok)' || echo '(Key ungültig?)')"
+    else
+      echo "Key:     fehlt"
+      command -v op >/dev/null 2>&1 && ! op whoami >/dev/null 2>&1 && \
+        echo "         (op installiert, aber nicht angemeldet)"
+    fi
+    exit 0 ;;
+  --find-op)
+    command -v op >/dev/null 2>&1 || { echo "op fehlt." >&2; exit 1; }
+    op item list --format=json 2>/dev/null | python3 -c "
+import json,subprocess,sys,os
+for it in json.load(sys.stdin):
+    if 'eleven' not in it.get('title','').lower(): continue
+    v=it.get('vault',{}).get('name','?')
+    d=json.loads(subprocess.run(['op','item','get',it['id'],'--format=json'],
+                                capture_output=True,text=True).stdout or '{}')
+    for f in d.get('fields',[]):
+        if f.get('value'):
+            print(f\"  EL_KEY_OP_REF=\\\"op://{v}/{it['title']}/{f.get('label') or f.get('id')}\\\"\")"
+    exit 0 ;;
+  -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
 
-if [ "$code" != 200 ] || [ ! -s "$TMP" ]; then
-  # Fehlermeldung der API auf stderr, damit man sie im Log sieht — dann sprechen
-  # wir trotzdem, nur eben mit der Systemstimme. Stille wäre die schlechteste Option.
-  echo "claude-say: ElevenLabs HTTP $code -> Fallback auf say" >&2
-  head -c 300 "$TMP" >&2 2>/dev/null; echo >&2
-  fallback "$TEXT"; exit 0
-fi
+TEXT="${1:-}"
+[ -n "$TEXT" ] || exit 0
 
-afplay "$TMP"
+case "$TTS_BACKEND" in
+  say)        speak_say "$TEXT" ;;
+  piper)      speak_piper "$TEXT" || { echo "claude-say: piper fehlgeschlagen -> say" >&2; speak_say "$TEXT"; } ;;
+  elevenlabs) speak_elevenlabs "$TEXT" || { echo "claude-say: ElevenLabs fehlgeschlagen -> say" >&2; speak_say "$TEXT"; } ;;
+  auto|*)
+    if el_resolve_key; then
+      speak_elevenlabs "$TEXT" && exit 0
+      echo "claude-say: ElevenLabs fehlgeschlagen -> nächstes Backend" >&2
+    fi
+    piper_ready && speak_piper "$TEXT" && exit 0
+    speak_say "$TEXT" ;;
+esac

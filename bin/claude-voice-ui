@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Startet die lokale Voice-UI und öffnet sie im Browser.
-#   claude-voice-ui [--port N] [--no-open]
+#   claude-voice-ui [--port N] [--no-open] [--tts piper|elevenlabs|say|auto]
 set -uo pipefail
 PORT="${VOICE_UI_PORT:-7331}"
 OPEN=1
@@ -8,7 +8,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="$2"; shift 2 ;;
     --no-open) OPEN=0; shift ;;
-    -h|--help) echo "claude-voice-ui [--port N] [--no-open]"; exit 0 ;;
+    --tts) export TTS_BACKEND="$2"; shift 2 ;;
+    -h|--help) echo "claude-voice-ui [--port N] [--no-open] [--tts piper|elevenlabs|say|auto]"; exit 0 ;;
     *) echo "unbekannt: $1" >&2; exit 1 ;;
   esac
 done

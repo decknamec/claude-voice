@@ -75,6 +75,19 @@ button.chip{color:var(--fg-dim);cursor:pointer;font:inherit;font-size:12.5px;
 button.chip:hover{color:var(--fg);border-color:var(--fg-dim)}
 button.chip:active{transform:scale(.96)}
 
+button.chip.danger:hover{color:var(--err);border-color:var(--err)}
+
+/* Abschlusszustand: die Seite wird ruhig gestellt statt einfach tot zu sein.
+   Exit-Bewegung kürzer und beschleunigend — man verabschiedet sich zügig. */
+body[data-state="off"] .ambient{opacity:0;transition:opacity var(--t-std) var(--e-in)}
+body[data-state="off"] .orb{
+  animation:none; transform:scale(.9); filter:grayscale(1) brightness(.7);
+  pointer-events:none; box-shadow:none;
+  transition:transform var(--t-std) var(--e-in), filter var(--t-std) var(--e-in),
+             box-shadow var(--t-std) var(--e-in);
+}
+body[data-state="off"] header button,body[data-state="off"] canvas{opacity:.35;pointer-events:none}
+
 /* ── Bühne ────────────────────────────────────────────────────────── */
 main{position:relative;z-index:1;width:100%;max-width:760px;padding:0 24px 40px;
      display:flex;flex-direction:column;align-items:center;flex:1}
@@ -167,6 +180,7 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <span class="sp"></span>
   <span class="chip" id="cfg">…</span>
   <button class="chip" id="reset" title="Neue Session beginnen">neue Session</button>
+  <button class="chip danger" id="quit" title="Server beenden und Session schließen">beenden</button>
 </header>
 
 <main>
@@ -193,9 +207,10 @@ const orb = $('#orb'), label = $('#label'), log = $('#log'), hint = $('#hint')
 const viz = $('#viz'), ctx = viz.getContext('2d')
 
 const GLOW = { idle:'--accent', listening:'--listen', transcribing:'--accent',
-               thinking:'--think', speaking:'--speak', error:'--err' }
+               thinking:'--think', speaking:'--speak', error:'--err', off:'--fg-dim' }
 const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…',
-               thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler' }
+               thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler',
+               off:'Beendet — das Fenster kann zu' }
 
 let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
 
@@ -341,8 +356,17 @@ $('#reset').addEventListener('click', async () => {
   log.innerHTML = ''; label.textContent = 'Neue Session'
 })
 
+$('#quit').addEventListener('click', async () => {
+  if (state === 'listening') stopRec()
+  hint.textContent = ''
+  // Der Server antwortet noch, bevor er sich abbaut — schlägt fetch trotzdem
+  // fehl, ist er schon weg, und das Ergebnis für den Nutzer ist dasselbe.
+  await post('/api/shutdown', '{}', 'application/json').catch(() => {})
+  setState('off')
+})
+
 fetch('/api/config').then(r => r.json()).then(c => {
-  $('#cfg').textContent = `${c.model} · ${c.permissionMode} · ${c.voice}`
+  $('#cfg').textContent = `${c.model} · ${c.permissionMode} · ${c.tts}`
 }).catch(() => {})
 
 setState('idle')

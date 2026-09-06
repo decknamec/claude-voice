@@ -80,6 +80,17 @@ else
 fi
 
 echo
+echo "Piper (lokales TTS, optional):"
+if command -v piper >/dev/null 2>&1 || [ -x "$HOME/.local/bin/piper" ]; then
+  echo "  piper vorhanden"
+else
+  echo "  nicht installiert — mit uv:  uv tool install piper-tts"
+fi
+PV="$C/piper-voices/de_DE-thorsten-medium.onnx"
+if [ -f "$PV" ]; then echo "  deutsche Stimme vorhanden"
+else echo "  keine Stimme — siehe README, Abschnitt \"Piper einrichten\""; fi
+
+echo
 echo "Stop-Hook in settings.json:"
 python3 - "$C/settings.json" "$HOOK" <<'PY'
 import json,sys,pathlib

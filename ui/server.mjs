@@ -22,6 +22,7 @@ function loadConf () {
     RATE: '190',
     MAX_CHARS: '900',
     PERMISSION_MODE: 'acceptEdits',
+    TTS_BACKEND: 'auto',
     CLAUDE_MODEL: '',
     VOCAB: 'Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, Vercel, TypeScript, Deploy, Terminal, Debugging, Refactoring, Prompt, Skill, Subagent, Transcript.',
     VOICE_SYSTEM_PROMPT: 'Deine Antwort wird per Sprachausgabe vorgelesen. Antworte auf Deutsch, in höchstens drei bis vier Sätzen, in ganzen Sätzen ohne Markdown, ohne Codeblöcke, ohne Aufzählungen. Lies keine Dateipfade oder URLs vor, beschreibe sie stattdessen. Wenn die Antwort zwingend Code braucht, sag nur, was du geändert hast und wo.'
@@ -124,6 +125,7 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/config') {
       return json(res, 200, {
+        tts: process.env.TTS_BACKEND || conf.TTS_BACKEND,
         voice: conf.VOICE,
         model: conf.CLAUDE_MODEL || 'default (opus[1m])',
         permissionMode: conf.PERMISSION_MODE,
@@ -154,6 +156,16 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/stop') {
       if (sayProc) { try { sayProc.kill() } catch {} }
       return json(res, 200, { ok: true })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/shutdown') {
+      json(res, 200, { ok: true })
+      // Erst antworten, dann abbauen — sonst sieht die UI nur einen Verbindungsabbruch
+      // und kann nicht zwischen "beendet" und "abgestürzt" unterscheiden.
+      if (sayProc) { try { sayProc.kill() } catch {} }
+      SESSION = null
+      setTimeout(() => { server.close(); process.exit(0) }, 150)
+      return
     }
 
     if (req.method === 'POST' && url.pathname === '/api/reset') {

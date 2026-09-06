@@ -239,6 +239,36 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}
   40%{transform:translateX(9px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 
+/* Einstellungen und Verlauf: gleiche Kachel wie die Aktivitätsspur, damit der
+   Kopf nicht bei zehn Bedienelementen umbricht. */
+.panel{
+  width:100%; margin-top:16px; padding:14px 16px;
+  border:1px solid var(--line); border-radius:12px; background:var(--panel);
+  box-shadow:var(--shadow); animation:rise var(--t-std) var(--e-out) both;
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px 18px;
+}
+.panel label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--fg-dim)}
+.panel select{
+  font:inherit; font-size:13px; color:var(--fg); background:var(--bg);
+  border:1px solid var(--line); border-radius:9px; padding:7px 9px; cursor:pointer;
+  transition:border-color var(--t-quick) var(--e);
+}
+.panel select:hover{border-color:var(--fg-dim)}
+.panel select#perm.risky{color:var(--err);border-color:var(--err)}
+
+.hist{display:block;max-height:260px;overflow-y:auto;padding:8px}
+.hist .row{
+  display:flex; gap:10px; align-items:baseline; padding:8px 10px; border-radius:9px;
+  cursor:pointer; transition:background var(--t-quick) var(--e);
+}
+.hist .row:hover{background:var(--accent-soft)}
+.hist .row.now{color:var(--listen);cursor:default}
+.hist .row.now:hover{background:none}
+.hist .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--fg)}
+.hist .row.now .t{color:var(--listen)}
+.hist .d{flex:none;font-size:11.5px;color:var(--fg-dim)}
+.hist .empty{padding:10px;color:var(--fg-dim);font-size:13px}
+
 /* Aktivitätsspur: bewusst nüchtern und dicht — sie soll überflogen werden,
    nicht gelesen. Monospace, weil hier Pfade und Befehle stehen. */
 .act{
@@ -269,16 +299,10 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 <header>
   <span class="dot"></span><b>Claude Voice</b>
   <span class="sp"></span>
-  <select class="chip sel" id="backend" title="Sprachausgabe"></select>
-  <select class="chip sel" id="voice" title="Stimme"></select>
   <span class="chip" id="cwd" title="Arbeitsverzeichnis der Session">…</span>
   <span class="chip" id="cfg" title="Laufendes Modell">…</span>
-  <select class="chip sel" id="perm" title="Wie mit Werkzeugen umgegangen wird">
-    <option value="default">fragt nach</option>
-    <option value="acceptEdits">Edits ohne Rückfrage</option>
-    <option value="plan">nur planen</option>
-    <option value="bypassPermissions">ohne jede Rückfrage</option>
-  </select>
+  <button class="chip" id="settoggle" title="Sprachausgabe, Modell, Sprache, Berechtigungen">Einstellungen</button>
+  <button class="chip" id="histtoggle" title="Frühere Sessions">Verlauf</button>
   <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
   <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
   <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
@@ -303,6 +327,28 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <div class="meter" id="meter"><span></span></div>
   <div class="preview" id="preview"></div>
   <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>Esc</kbd> stoppt</div>
+  <div class="panel" id="settings" hidden>
+    <label>Sprachausgabe<select id="backend"></select></label>
+    <label>Stimme<select id="voice"></select></label>
+    <label>Modell<select id="model">
+      <option value="">wie konfiguriert</option>
+      <option value="claude-opus-5">Opus 5</option>
+      <option value="claude-sonnet-5">Sonnet 5</option>
+      <option value="claude-haiku-4-5">Haiku 4.5</option>
+    </select></label>
+    <label>Sprache<select id="lang">
+      <option value="de">Deutsch</option>
+      <option value="en">English</option>
+      <option value="auto">automatisch erkennen</option>
+    </select></label>
+    <label>Werkzeuge<select id="perm">
+      <option value="default">fragt nach</option>
+      <option value="acceptEdits">Edits ohne Rückfrage</option>
+      <option value="plan">nur planen</option>
+      <option value="bypassPermissions">ohne jede Rückfrage</option>
+    </select></label>
+  </div>
+  <div class="panel hist" id="history" hidden></div>
   <div class="log" id="log"></div>
   <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
 </main>
@@ -691,6 +737,65 @@ if (localStorage.getItem('claude-voice-live') === '1') {
   hint.textContent = 'Freihändig ist vorgemerkt — einmal irgendwo klicken zum Aktivieren'
 }
 
+// ── Einstellungs- und Verlaufsleiste ─────────────────────────────────
+function panelToggle (btn, panel, key, onOpen) {
+  let open = localStorage.getItem(key) === '1'
+  panel.hidden = !open
+  btn.classList.toggle('active', open)
+  if (open && onOpen) onOpen()
+  btn.addEventListener('click', () => {
+    open = !open
+    panel.hidden = !open
+    btn.classList.toggle('active', open)
+    localStorage.setItem(key, open ? '1' : '0')
+    if (open && onOpen) onOpen()
+  })
+}
+panelToggle($('#settoggle'), $('#settings'), 'claude-voice-settings')
+
+// ── Verlauf ──────────────────────────────────────────────────────────
+const hist = $('#history')
+function seit (ms) {
+  const m = Math.round((Date.now() - ms) / 60000)
+  if (m < 1) return 'gerade eben'
+  if (m < 60) return `vor ${m} min`
+  const h = Math.round(m / 60)
+  if (h < 24) return `vor ${h} h`
+  return `vor ${Math.round(h / 24)} Tagen`
+}
+
+async function ladeVerlauf () {
+  hist.innerHTML = '<div class="empty">lädt…</div>'
+  try {
+    const { sessions } = await fetch('/api/sessions', { headers: { 'x-voice-token': TOKEN } })
+      .then(r => r.json())
+    hist.innerHTML = ''
+    if (!sessions.length) { hist.innerHTML = '<div class="empty">Noch keine früheren Sessions in diesem Verzeichnis.</div>'; return }
+    for (const x of sessions) {
+      const row = document.createElement('div')
+      row.className = 'row' + (x.aktuell ? ' now' : '')
+      const t = document.createElement('span'); t.className = 't'
+      t.textContent = x.titel + (x.aktuell ? '  · läuft gerade' : '')
+      const d = document.createElement('span'); d.className = 'd'; d.textContent = seit(x.zuletzt)
+      row.append(t, d)
+      row.title = x.id
+      if (!x.aktuell) row.addEventListener('click', () => fortsetzen(x.id, x.titel))
+      hist.append(row)
+    }
+  } catch (e) { hist.innerHTML = ''; hist.append(Object.assign(document.createElement('div'), { className: 'empty', textContent: 'Verlauf nicht lesbar: ' + e.message })) }
+}
+
+async function fortsetzen (id, titel) {
+  try {
+    await post('/api/resume', JSON.stringify({ id }), 'application/json')
+    stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear()
+    liveBubbleEl = null; busy = false; setState('idle')
+    add('Session', `Fortgesetzt: ${titel}`, '')
+    ladeVerlauf()
+  } catch (e) { showError(e, e.code) }
+}
+panelToggle($('#histtoggle'), $('#history'), 'claude-voice-hist', ladeVerlauf)
+
 // ── Aktivitätsspur ───────────────────────────────────────────────────
 // Eine lange Antwort mit Werkzeugaufrufen sieht sonst nach Stillstand aus.
 const act = $('#actinner')
@@ -769,6 +874,27 @@ function setPermUI (mode) {
   if ([...sel.options].some(o => o.value === mode)) sel.value = mode
   sel.classList.toggle('risky', sel.value === 'bypassPermissions')
 }
+
+$('#model').addEventListener('change', async e => {
+  const model = e.target.value
+  try {
+    const r = await post('/api/model', JSON.stringify({ model }), 'application/json')
+    add('Modell', (model ? prettyModel(model) : 'wie konfiguriert') +
+        (r.applied ? '' : ' — gilt ab der nächsten Session'), '')
+    if (r.applied) $('#cfg').textContent = prettyModel(model || null)
+  } catch (err) { showError(err, err.code) }
+})
+
+$('#lang').addEventListener('change', async e => {
+  const lang = e.target.value
+  try {
+    const r = await post('/api/language', JSON.stringify({ lang }), 'application/json')
+    const name = e.target.options[e.target.selectedIndex].text
+    add('Sprache', name + (r.restarted
+      ? ' — neue Session gestartet, weil die Antwortsprache am Systemprompt hängt' : ''), '')
+    if (r.restarted) { log.querySelectorAll('.msg.live').forEach(x => x.remove()); liveBubbleEl = null }
+  } catch (err) { showError(err, err.code) }
+})
 
 $('#perm').addEventListener('change', async e => {
   const mode = e.target.value
@@ -938,6 +1064,8 @@ fetch('/api/config', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).
   $('#cfg').textContent = prettyModel(c.model)
   $('#cfg').title = c.model || 'aus deiner Konfiguration'
   setPermUI(c.permissionMode)
+  if (c.modelOverride) $('#model').value = c.modelOverride
+  if (c.lang) $('#lang').value = c.lang
 }).catch(() => {})
 
 // Diagnosezugang: die Zustandsvariablen sind skript-lokal und sonst von außen

@@ -17,7 +17,7 @@ import { tmpdir, homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID, randomBytes } from 'node:crypto'
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { query, listSessions } from '@anthropic-ai/claude-agent-sdk'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const HOME = homedir()
@@ -162,7 +162,7 @@ async function transcribe (buf, conf) {
   if (await startWhisper(conf)) {
     const form = new FormData()
     form.append('file', new Blob([buf]), 'in.webm')
-    form.append('language', conf.WHISPER_LANG)
+    form.append('language', WHISPER_LANG[lang] || conf.WHISPER_LANG)
     form.append('response_format', 'text')
     const r = await fetch(`http://127.0.0.1:${whisper.port}/inference`, { method: 'POST', body: form })
     if (r.ok) {
@@ -177,7 +177,7 @@ async function transcribe (buf, conf) {
     await writeFile(webm, buf)
     const ff = await run('ffmpeg', ['-v', 'error', '-i', webm, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', wav])
     if (ff.code !== 0) throw new VoiceError('ffmpeg_failed', ff.err.trim().split('\n').pop() || 'unbekannt')
-    const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', conf.WHISPER_LANG, '-nt', '-np', '-t', '8', '-f', wav])
+    const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', WHISPER_LANG[lang] || conf.WHISPER_LANG, '-nt', '-np', '-t', '8', '-f', wav])
     if (w.code !== 0) throw new VoiceError('whisper_failed', w.err.trim().split('\n').pop() || 'unbekannt')
     const text = w.out.replace(/\n/g, ' ').trim()
     return JUNK.test(text) ? '' : text
@@ -187,8 +187,18 @@ async function transcribe (buf, conf) {
 // ── Die persistente Session ──────────────────────────────────────────
 let S = null   // { q, send, pending, sessionId }
 let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
+let modelOverride = null
+let lang = 'de'
 
-function startSession (conf) {
+// Der Systemprompt ist je Session fest — eine Sprachumstellung braucht daher
+// eine neue Session. Für Deutsch gilt weiter der Text aus der Konfig.
+const PROMPTS = {
+  en: 'Your reply will be read aloud. Answer in English, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs — describe them instead. If the answer truly needs code, just say what you changed and where.',
+  auto: 'Your reply will be read aloud. Answer in the same language the user just spoke, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs — describe them instead. If the answer truly needs code, just say what you changed and where.'
+}
+const WHISPER_LANG = { de: 'de', en: 'en', auto: 'auto' }
+
+function startSession (conf, resumeId) {
   const inbox = []
   let wake = null
   async function* input () {
@@ -204,10 +214,11 @@ function startSession (conf) {
     prompt: input(),
     options: {
       cwd: CWD,
+      ...(resumeId ? { resume: resumeId } : {}),
       permissionMode: permMode || conf.PERMISSION_MODE,
       includePartialMessages: true,
-      ...(conf.CLAUDE_MODEL ? { model: conf.CLAUDE_MODEL } : {}),
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: conf.VOICE_SYSTEM_PROMPT },
+      ...((modelOverride || conf.CLAUDE_MODEL) ? { model: modelOverride || conf.CLAUDE_MODEL } : {}),
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT },
       // Hier hängt die ganze Freigabe-Mechanik dran: das Promise bleibt offen,
       // bis der Nutzer in der UI entschieden hat.
       canUseTool: (toolName, toolInput, { signal }) => new Promise(resolve => {
@@ -348,7 +359,9 @@ const server = createServer(async (req, res) => {
         model: S?.model || conf.CLAUDE_MODEL || null,
         permissionMode: permMode || conf.PERMISSION_MODE,
         session: S?.sessionId || null,
-        cwd: CWD
+        cwd: CWD,
+        lang,
+        modelOverride
       })
     }
 
@@ -377,6 +390,47 @@ const server = createServer(async (req, res) => {
       if (!S) startSession(conf)
       S.send(text)
       return json(res, 200, { ok: true })
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/sessions') {
+      const list = await listSessions({ dir: CWD, limit: 30 })
+      return json(res, 200, {
+        sessions: list.map(x => ({
+          id: x.sessionId,
+          titel: x.customTitle || x.summary || '(ohne Titel)',
+          zuletzt: x.lastModified,
+          aktuell: x.sessionId === S?.sessionId
+        }))
+      })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/resume') {
+      const { id } = JSON.parse((await body(req)).toString('utf8'))
+      if (!id) return json(res, 400, { error: 'keine Session-ID' })
+      await stopSpeech()
+      try { S?.q.close() } catch {}
+      S = null
+      startSession(conf, id)
+      return json(res, 200, { ok: true, resumed: id })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/model') {
+      const { model } = JSON.parse((await body(req)).toString('utf8'))
+      modelOverride = model || null
+      if (S) { try { await S.q.setModel(modelOverride || undefined) } catch (e) {
+        return json(res, 500, { error: String(e?.message || e) }) } }
+      return json(res, 200, { ok: true, model: modelOverride, applied: !!S })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/language') {
+      const { lang: l } = JSON.parse((await body(req)).toString('utf8'))
+      if (!WHISPER_LANG[l]) return json(res, 400, { error: 'unbekannte Sprache' })
+      lang = l
+      // Die Erkennung stellt sofort um; der Antwortsprache-Prompt hängt an der
+      // Session, also muss die neu starten.
+      let restarted = false
+      if (S) { await stopSpeech(); try { S.q.close() } catch {}; S = null; restarted = true }
+      return json(res, 200, { ok: true, lang, restarted })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission-mode') {

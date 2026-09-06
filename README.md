@@ -57,7 +57,16 @@ zu starten. Das bringt drei Dinge, die vorher nicht gingen:
   entschieden hast. Über die CLI ist das nicht möglich — sie lehnt solche Aufrufe
   im Headless-Betrieb kommentarlos ab, ohne zu fragen.
 
-Der Berechtigungsmodus lässt sich im Kopf umschalten und gilt sofort für die
+Unter **Einstellungen** liegen Sprachausgabe, Stimme, Modell, Sprache und
+Berechtigungen. Modell und Berechtigungen gelten sofort für die laufende
+Session; eine Sprachumstellung startet sie neu, weil die Antwortsprache am
+Systemprompt hängt und der je Session fest ist. Die Spracherkennung stellt
+ohne Neustart um.
+
+**Verlauf** listet frühere Sessions aus diesem Verzeichnis; ein Klick setzt
+eine davon fort.
+
+Der Berechtigungsmodus lässt sich auch direkt umschalten und gilt sofort für die
 laufende Session — von „fragt nach" bis „ohne jede Rückfrage". Letzteres wird
 rot dargestellt, weil es jede Bestätigung abschaltet.
 

@@ -79,6 +79,7 @@ button.chip:hover{color:var(--fg);border-color:var(--fg-dim)}
 button.chip:active{transform:scale(.96)}
 
 button.chip.danger:hover{color:var(--err);border-color:var(--err)}
+button.chip.active{color:var(--listen);border-color:var(--listen)}
 
 select.sel{
   font:inherit; font-size:12.5px; color:var(--fg); cursor:pointer;
@@ -264,6 +265,7 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <span class="chip" id="cwd" title="Arbeitsverzeichnis der Session">…</span>
   <span class="chip" id="cfg" title="Modell · Berechtigungen">…</span>
   <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
+  <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
   <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
   <button class="chip" id="stop" title="Laufenden Turn abbrechen (Esc)">Abbrechen</button>
   <button class="chip danger" id="quit" title="Server beenden und Session schließen">Beenden</button>
@@ -303,6 +305,8 @@ const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…
                waiting:'Wartet auf deine Freigabe' }
 
 let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
+// Muss vor draw() stehen: die Zeichenschleife startet sofort und liest live.on.
+const live = { on:false, td:null, floor:0.012, hot:0, quiet:0, calib:[], calibUntil:0 }
 
 function setState (s) {
   state = s
@@ -332,8 +336,10 @@ function add (who, text, cls, meta) {
    Beim Sprechen gibt es keinen Analyser (say läuft serverseitig), da wird
    synthetisch moduliert — sichtbar lebendig, aber ruhiger als beim Zuhören. */
 let phase = 0
+let vadFrame = 0
 function draw () {
   requestAnimationFrame(draw)
+  if (live.on && ++vadFrame % 3 === 0) vadTick()   // ~20 Hz reicht für Sprache
   const W = viz.width, C = W / 2
   ctx.clearRect(0, 0, W, W)
   const active = state === 'listening' || state === 'speaking'
@@ -497,7 +503,8 @@ addEventListener('keyup', e => {
 
 $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
-  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); live = null; busy = false
+  stopAudio()
+  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
   setState('idle'); label.textContent = 'Neue Session'
 })
 
@@ -507,9 +514,91 @@ $('#quit').addEventListener('click', async () => {
   // Der Server antwortet noch, bevor er sich abbaut — schlägt fetch trotzdem
   // fehl, ist er schon weg, und das Ergebnis für den Nutzer ist dasselbe.
   await post('/api/shutdown', '{}', 'application/json').catch(() => {})
-  es.close()
+  es.close(); stopAudio(); live.on = false
   setState('off')
 })
+
+// ── Wiedergabe im Browser ────────────────────────────────────────────
+// Der Server erzeugt das Audio nur noch; abgespielt wird es hier. Nur so
+// erfasst die Echounterdrückung von getUserMedia die eigene Stimme — sonst
+// hört das Mikrofon Claude und der Freihandmodus triggert auf sich selbst.
+const player = { queue: [], el: new Audio(), playing: false }
+player.el.preload = 'auto'
+
+function playNext () {
+  if (player.playing || !player.queue.length) return
+  const id = player.queue.shift()
+  player.playing = true
+  player.el.src = `/api/audio/${id}?token=${encodeURIComponent(TOKEN)}`
+  player.el.play().catch(() => { player.playing = false; playNext() })
+}
+player.el.addEventListener('ended', () => { player.playing = false; playNext() })
+player.el.addEventListener('error', () => { player.playing = false; playNext() })
+
+function stopAudio () {
+  player.queue.length = 0
+  player.el.pause(); player.el.removeAttribute('src'); player.el.load()
+  player.playing = false
+}
+const speaking = () => player.playing || player.queue.length > 0
+
+// ── Freihändig ───────────────────────────────────────────────────────
+// Pegelbasierte Sprachaktivitätserkennung auf demselben Analyser, der auch
+// die Waveform speist. Der Grundpegel wird beim Einschalten gemessen — ein
+// fester Schwellwert taugt für einen ruhigen und einen lauten Raum nicht.
+
+function levelNow () {
+  if (!analyser) return 0
+  if (!live.td) live.td = new Uint8Array(analyser.fftSize)
+  analyser.getByteTimeDomainData(live.td)
+  let sum = 0
+  for (let i = 0; i < live.td.length; i++) { const d = (live.td[i] - 128) / 128; sum += d * d }
+  return Math.sqrt(sum / live.td.length)
+}
+
+function vadTick () {
+  if (!live.on || !analyser) return
+  const l = levelNow()
+
+  if (performance.now() < live.calibUntil) { live.calib.push(l); return }
+  if (live.calib.length) {
+    live.floor = Math.max(0.012, Math.max(...live.calib) * 1.8)
+    live.calib = []
+    hint.textContent = 'Freihändig — sprich einfach los, du kannst dazwischenreden'
+  }
+
+  const loud = l > live.floor
+  if (state === 'listening') {
+    live.quiet = loud ? 0 : live.quiet + 1
+    if (live.quiet > 18) { live.quiet = 0; stopRec() }   // ~0,9 s Stille beendet
+    return
+  }
+  if (busy && !speaking()) return          // denkt gerade — nicht dazwischenfunken
+  live.hot = loud ? live.hot + 1 : 0
+  if (live.hot < 4) return                 // ~0,2 s, damit ein Husten nicht auslöst
+  live.hot = 0
+  if (speaking()) { stopAudio(); interrupt().then(start) }   // Barge-in
+  else if (!busy) start()
+}
+
+async function setLive (on) {
+  live.on = on
+  $('#livetoggle').classList.toggle('active', on)
+  localStorage.setItem('claude-voice-live', on ? '1' : '0')
+  if (!on) { hint.textContent = 'Klick zum Sprechen · Leertaste halten · Esc stoppt'; return }
+  try { await mic() } catch (e) { showError(e); setLive(false); return }
+  if (ac.state === 'suspended') await ac.resume()
+  live.calib = []; live.calibUntil = performance.now() + 800
+  hint.textContent = 'Kalibriere den Raumpegel…'
+}
+$('#livetoggle').addEventListener('click', () => setLive(!live.on))
+// Nach dem Neuladen wieder anschalten — aber erst nach einer Nutzergeste,
+// sonst verweigern Browser sowohl Mikrofon als auch Tonwiedergabe.
+if (localStorage.getItem('claude-voice-live') === '1') {
+  $('#livetoggle').classList.add('active')
+  addEventListener('pointerdown', () => { if (!live.on) setLive(true) }, { once: true })
+  hint.textContent = 'Freihändig ist vorgemerkt — einmal irgendwo klicken zum Aktivieren'
+}
 
 // ── Aktivitätsspur ───────────────────────────────────────────────────
 // Eine lange Antwort mit Werkzeugaufrufen sieht sonst nach Stillstand aus.
@@ -592,13 +681,12 @@ const PERM = {
 // ── Ereignisstrom ────────────────────────────────────────────────────
 // Eine persistente Session auf der Serverseite heißt: der Server redet von
 // sich aus. Alles unterhalb eines Turns läuft über diesen Kanal.
-let live = null   // die Blase, in die gerade Text tropft
+let liveBubbleEl = null   // die Blase, in die gerade Text tropft
 
 function liveBubble () {
-  if (live) return live
-  const el = add('Claude', '', 'live')
-  live = el
-  return el
+  if (liveBubbleEl) return liveBubbleEl
+  liveBubbleEl = add('Claude', '', 'live')
+  return liveBubbleEl
 }
 
 const es = new EventSource('/api/events?token=' + encodeURIComponent(TOKEN))
@@ -617,13 +705,14 @@ es.addEventListener('message', e => {
   const el = liveBubble()
   el.querySelector('.body').textContent = text
   el.classList.remove('live')
-  live = null
+  liveBubbleEl = null
 })
 
 es.addEventListener('done', () => {
-  if (live) { live.classList.remove('live'); live = null }
-  setState('idle')
+  if (liveBubbleEl) { liveBubbleEl.classList.remove('live'); liveBubbleEl = null }
   busy = false
+  const settle = () => { if (!speaking()) setState('idle'); else setTimeout(settle, 200) }
+  settle()
 })
 
 es.addEventListener('error', e => {
@@ -635,6 +724,9 @@ es.addEventListener('error', e => {
 })
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
+
+es.addEventListener('audio', e => { player.queue.push(JSON.parse(e.data).id); playNext() })
+es.addEventListener('audio-stop', stopAudio)
 
 es.addEventListener('state', e => {
   const { state: st } = JSON.parse(e.data)
@@ -671,7 +763,8 @@ es.addEventListener('permission', e => {
 // Abbruch: hält Sprachausgabe und laufenden Turn an. Das ist das Barge-in.
 async function interrupt () {
   await post('/api/interrupt', '{}', 'application/json').catch(() => {})
-  if (live) { live.classList.remove('live'); live = null }
+  stopAudio()
+  if (liveBubbleEl) { liveBubbleEl.classList.remove('live'); liveBubbleEl = null }
   busy = false
   setState('idle')
 }

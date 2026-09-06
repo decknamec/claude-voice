@@ -52,10 +52,12 @@ source "$HOME/.claude/hooks/lib/elkey.sh"
 
 # --tts und --voice vor allem anderen auswerten, damit sie die Konfig überstimmen.
 _VOICE_OVERRIDE=""
+OUT=""            # gesetzt -> schreiben statt abspielen
 while true; do
   case "${1:-}" in
     --tts)   TTS_BACKEND="${2:-auto}"; shift 2 ;;
     --voice) _VOICE_OVERRIDE="${2:-}"; shift 2 ;;
+    --out)   OUT="${2:-}"; shift 2 ;;
     *) break ;;
   esac
 done
@@ -88,7 +90,19 @@ edge_bin() {
 }
 edge_ready() { edge_bin >/dev/null; }
 
-speak_say()   { say -v "$VOICE" -r "$RATE" -- "$1"; }
+# Einzige Stelle, an der Ton den Rechner verlässt — oder eben in eine Datei geht.
+emit() {  # $1 = erzeugte Datei
+  if [ -n "$OUT" ]; then mv "$1" "$OUT"; else afplay "$1"; rm -f "$1"; fi
+}
+
+speak_say() {
+  if [ -n "$OUT" ]; then
+    # AIFF, weil `say` genau das ohne Umweg kann; Browser spielen es ab.
+    say -v "$VOICE" -r "$RATE" -o "$OUT" --data-format=LEI16@22050 --file-format=WAVE -- "$1"
+  else
+    say -v "$VOICE" -r "$RATE" -- "$1"
+  fi
+}
 
 speak_piper() {
   local bin tmp
@@ -97,7 +111,7 @@ speak_piper() {
   tmp=$(mktemp -t claudesay).wav
   printf '%s' "$1" | "$bin" -m "$PIPER_MODEL" -f "$tmp" >/dev/null 2>&1
   [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
-  afplay "$tmp"; rm -f "$tmp"
+  emit "$tmp"
 }
 
 speak_edge() {
@@ -106,7 +120,7 @@ speak_edge() {
   tmp=$(mktemp -t claudesay).mp3
   "$bin" --voice "$EDGE_VOICE" --text "$1" --write-media "$tmp" >/dev/null 2>&1
   [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
-  afplay "$tmp"; rm -f "$tmp"
+  emit "$tmp"
 }
 
 el_get() {  # $1 = Pfad
@@ -143,7 +157,7 @@ speak_elevenlabs() {
     head -c 300 "$tmp" >&2 2>/dev/null; echo >&2
     rm -f "$tmp"; return 1
   fi
-  afplay "$tmp"; rm -f "$tmp"
+  emit "$tmp"
 }
 
 # ── Unterbefehle ─────────────────────────────────────────────────────

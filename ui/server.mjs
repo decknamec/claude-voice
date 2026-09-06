@@ -65,9 +65,12 @@ function push (event, data) {
   for (const res of clients) { try { res.write(frame) } catch {} }
 }
 
-// ── Sprachausgabe: satzweise, damit die erste Silbe nicht auf die ganze
-//    Antwort wartet. Das ist der eigentliche Gewinn des Streamings. ──
-const speech = { queue: [], busy: false, proc: null }
+// ── Sprachausgabe: satzweise erzeugt, im Browser abgespielt.
+//    Serverseitiges afplay wäre einfacher, aber dann hört das Mikrofon die
+//    eigene Stimme und die Echounterdrückung greift nicht — ohne das ist kein
+//    Freihandmodus möglich. ──
+const speech = { queue: [], busy: false, proc: null, seq: 0 }
+const audio = new Map()   // id -> { path, mime }
 
 function speakable (t) {
   return t.replace(/```[\s\S]*?```/g, '')
@@ -86,22 +89,43 @@ function enqueueSpeech (text, conf) {
   if (t) { speech.queue.push({ text: t, conf }); drainSpeech() }
 }
 
-function drainSpeech () {
+async function drainSpeech () {
   if (speech.busy || !speech.queue.length) return
   speech.busy = true
   const { text, conf } = speech.queue.shift()
+  const id = `a${++speech.seq}`
+  // Container richtet sich nach dem Backend: piper und say liefern WAV,
+  // edge und ElevenLabs mp3. Die Endung entscheidet, was der Browser bekommt.
+  const wav = conf.TTS_BACKEND === 'piper' || conf.TTS_BACKEND === 'say'
+  const dir = await mkdtemp(join(tmpdir(), 'voicetts-'))
+  const path = join(dir, wav ? 'a.wav' : 'a.mp3')
   const args = []
   if (conf.TTS_BACKEND && conf.TTS_BACKEND !== 'auto') args.push('--tts', conf.TTS_BACKEND)
-  args.push(text)
+  args.push('--out', path, text)
   speech.proc = spawn(join(HOME, '.claude/bin/claude-say'), args, { stdio: 'ignore' })
-  const done = () => { speech.proc = null; speech.busy = false; drainSpeech() }
+  const done = async () => {
+    speech.proc = null
+    if (existsSync(path)) {
+      // Endung kann abweichen, wenn `auto` ein anderes Backend gewählt hat.
+      const mime = readFileSync(path, { encoding: null }).slice(0, 4).toString('binary').startsWith('RIFF')
+        ? 'audio/wav' : 'audio/mpeg'
+      audio.set(id, { path, dir, mime })
+      push('audio', { id, mime })
+    } else {
+      await rm(dir, { recursive: true, force: true })
+    }
+    speech.busy = false
+    drainSpeech()
+  }
   speech.proc.on('close', done)
   speech.proc.on('error', done)
 }
 
-function stopSpeech () {
+async function stopSpeech () {
   speech.queue.length = 0
   if (speech.proc) { try { speech.proc.kill() } catch {} }
+  for (const [id, a] of audio) { audio.delete(id); await rm(a.dir, { recursive: true, force: true }) }
+  push('audio-stop', {})
 }
 
 // ── Whisper: Modell einmal laden statt pro Äußerung (~0,3 s je Aufruf). ──
@@ -303,6 +327,17 @@ const server = createServer(async (req, res) => {
       clients.add(res)
       req.on('close', () => clients.delete(res))
       return
+    }
+
+    if (req.method === 'GET' && url.pathname.startsWith('/api/audio/')) {
+      const id = url.pathname.slice('/api/audio/'.length)
+      const a = audio.get(id)
+      if (!a || !existsSync(a.path)) return json(res, 404, { error: 'weg' })
+      audio.delete(id)
+      const buf = readFileSync(a.path)
+      await rm(a.dir, { recursive: true, force: true })
+      res.writeHead(200, { 'content-type': a.mime, 'content-length': buf.length })
+      return res.end(buf)
     }
 
     if (req.method === 'GET' && url.pathname === '/api/config') {

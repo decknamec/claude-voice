@@ -97,6 +97,22 @@ t "Token-Prüfung vorhanden" \
   "ohne die kann jede offene Webseite die Endpunkte auslösen"
 t "keine Endpunkte ohne Token-Gate" \
   "grep -q \"url.pathname.startsWith('/api/') && !authorized\" '$REPO/ui/server.mjs'"
+# Diese Prüfung hätte drei Abbrüche in Folge gefunden: ein umgebautes Markup
+# ließ Elemente verschwinden, das Skript griff weiter darauf zu und starb still.
+t "jedes \$('#id') hat sein Element im Markup" \
+  "node -e \"
+     const fs=require('fs'), s=fs.readFileSync('$REPO/ui/index.html','utf8');
+     const i=s.indexOf('<script>');
+     const da=new Set([...s.slice(0,i).matchAll(/id=[\\\"']([\\w-]+)/g)].map(m=>m[1]));
+     const ben=new Set([...s.slice(i).matchAll(/[\\\$]\\('#([\\w-]+)'\\)/g)].map(m=>m[1]));
+     const fehlt=[...ben].filter(x=>!da.has(x));
+     if (fehlt.length) { console.error(fehlt.join(', ')); process.exit(1) }\"" \
+  "ein fehlendes Element bricht das ganze Skript ab"
+
+t "hidden schlaegt eigene display-Regeln" \
+  "grep -q '\\[hidden\\]{display:none' '$REPO/ui/index.html'" \
+  "sonst bleibt ein Overlay mit display:grid trotz hidden sichtbar"
+
 t "index.html JS parst" \
   "node -e \"const s=require('fs').readFileSync('$REPO/ui/index.html','utf8');
      new Function(s.match(/<script>([\\s\\S]*)<\\/script>/)[1].replace(/await /g,''))\""

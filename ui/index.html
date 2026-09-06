@@ -36,11 +36,67 @@
 }
 
 *{box-sizing:border-box}
+
+/* Radienstufen einmal festlegen und überall benutzen: Chips sind Pillen,
+   Flächen 14, Eingaben 10. Gemischte Systeme lesen sich wie ein Versehen. */
+:root{ --r-pill:999px; --r-panel:14px; --r-field:10px; }
+
+::selection{background:var(--accent-soft);color:var(--fg)}
+
+/* Eigene Scrollbalken. Die Systemleisten setzen im dunklen Layout einen
+   hellen Balken, der schwerer wiegt als alles andere auf der Seite. */
+*{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{
+  background:var(--line); border-radius:var(--r-pill);
+  border:2px solid transparent; background-clip:content-box;
+}
+::-webkit-scrollbar-thumb:hover{background:var(--fg-dim);background-clip:content-box}
+::-webkit-scrollbar-corner{background:transparent}
+
+/* Sichtbarer Fokus für Tastaturbedienung. Vorher gab es keinen. */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-field)}
+:focus:not(:focus-visible){outline:none}
 body{
-  margin:0; min-height:100vh; background:var(--bg); color:var(--fg);
+  margin:0; min-height:100dvh; background:var(--bg); color:var(--fg);
   font:15px/1.6 ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
-  display:flex; flex-direction:column; align-items:center;
   overflow-x:hidden;
+}
+
+/* Zwei Spalten: was man einstellt links, was man tut in der Mitte. Vorher lagen
+   beide Ebenen übereinander und schoben das Gespräch nach unten aus dem Bild. */
+.shell{
+  position:relative; z-index:1;
+  display:grid; grid-template-columns:280px minmax(0,1fr);
+  min-height:100dvh;
+}
+.side{
+  border-right:1px solid var(--line); background:var(--panel);
+  padding:20px 18px; display:flex; flex-direction:column; gap:22px;
+  height:100dvh; position:sticky; top:0; overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:600;color:var(--fg)}
+.sgroup{display:flex;flex-direction:column;gap:11px}
+.sgroup.grow{flex:1;min-height:0}
+.sgroup h2{
+  margin:0; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--fg-dim); display:flex; align-items:baseline; gap:8px;
+}
+.mini{
+  margin-left:auto; font:inherit; font-size:10.5px; letter-spacing:0; text-transform:none;
+  color:var(--fg-dim); background:none; border:0; cursor:pointer; padding:0;
+  transition:color var(--t-quick) var(--e);
+}
+.mini:hover{color:var(--fg)}
+
+/* Hauptspalte als Raster: Kopf oben fest, Bühne darunter, Gespräch füllt den
+   Rest. Vorher lag unter dem Hinweis eine tote Zone, weil alles oben klebte. */
+main{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);   /* ohne definierte Spalte schrumpft
+                                            die Kopfzeile auf Inhaltsbreite */
+  grid-template-rows:auto auto 1fr; min-width:0; min-height:100dvh;
 }
 
 /* ── Ambient-Layer: der Hintergrund atmet, damit die Seite nie tot wirkt ── */
@@ -57,19 +113,29 @@ body{
 }
 
 header{
-  position:relative; z-index:1; width:100%; max-width:760px;
-  display:flex; align-items:center; flex-wrap:wrap; gap:8px;
-  padding:20px 24px; font-size:12.5px; color:var(--fg-dim);
+  position:sticky; top:0; z-index:4;
+  display:flex; align-items:center; gap:8px; min-height:56px;
+  padding:0 24px; font-size:12.5px; color:var(--fg-dim);
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
 }
-/* Der Titel bricht nicht um; wird es eng, wandern die Chips in Zeile zwei. */
-header b{white-space:nowrap;flex:none}
-#cwd{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header .sp{flex:1}
+/* Sitzungskontext ist Information, kein Bedienelement — also kein Chip. */
+.ctx{display:flex;align-items:baseline;gap:8px;min-width:0}
+.ctx b{font-weight:500;color:var(--fg);font-size:12.5px}
+.ctx #cwd{
+  font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--fg-dim);
+  max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ctx .sp2{color:var(--line)}
+.only-narrow{display:none}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
      transition:background var(--t-std) var(--e)}
 header b{color:var(--fg);font-weight:600}
 header .sp{flex:1}
 .chip{
-  border:1px solid var(--line); border-radius:999px; padding:3px 10px;
+  border:1px solid var(--line); border-radius:var(--r-pill); padding:3px 10px;
   background:var(--panel); white-space:nowrap;
 }
 button.chip{color:var(--fg-dim);cursor:pointer;font:inherit;font-size:12.5px;
@@ -108,15 +174,13 @@ body[data-state="off"] .orb{
 body[data-state="off"] header button,body[data-state="off"] canvas{opacity:.35;pointer-events:none}
 
 /* ── Bühne ────────────────────────────────────────────────────────── */
-main{position:relative;z-index:1;width:100%;max-width:760px;padding:0 24px 40px;
-     display:flex;flex-direction:column;align-items:center;flex:1}
-.stage{position:relative;width:300px;height:300px;display:grid;place-items:center;
-       flex:none;margin:8px 0 4px}
-canvas{position:absolute;inset:0;width:300px;height:300px}
+.stage{position:relative;width:250px;height:250px;display:grid;place-items:center;
+       flex:none;margin:26px 0 4px}
+canvas{position:absolute;inset:0;width:250px;height:250px}
 
 /* Primary: der Orb. Press = Anticipation (scale .97) + Settle. */
 .orb{
-  position:relative; width:132px; height:132px; border-radius:50%;
+  position:relative; width:118px; height:118px; border-radius:50%;
   border:none; cursor:pointer; color:#fff;
   background:radial-gradient(circle at 35% 30%, #ffffff30, transparent 60%), var(--glow,#5b5bd6);
   box-shadow:0 8px 32px var(--glow,#5b5bd6)55, inset 0 1px 0 #ffffff40;
@@ -134,7 +198,7 @@ body[data-state="thinking"] .orb,body[data-state="transcribing"] .orb{animation:
 body[data-state="speaking"] .orb{animation:none}
 
 /* Pulsringe: nur beim Zuhören, 1/3-Regel — genau zwei gleichzeitig. */
-.pulse{position:absolute;inset:0;margin:auto;width:132px;height:132px;border-radius:50%;
+.pulse{position:absolute;inset:0;margin:auto;width:118px;height:118px;border-radius:50%;
   border:1.5px solid var(--glow,#5b5bd6);opacity:0;pointer-events:none}
 body[data-state="listening"] .pulse{animation:ping 2.4s var(--e-out) infinite}
 body[data-state="listening"] .pulse:nth-child(2){animation-delay:1.2s}
@@ -183,9 +247,22 @@ body[data-state="thinking"] .dots{opacity:1}
 @keyframes hop{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-6px);opacity:1}}
 
 /* ── Verlauf ──────────────────────────────────────────────────────── */
-.log{width:100%;display:flex;flex-direction:column;gap:12px;margin-top:22px}
+.top{display:flex;flex-direction:column;align-items:center;padding:14px 24px 2px}
+.feed{
+  padding:4px 24px 40px; overflow-y:auto; display:flex; flex-direction:column;
+  align-items:center; gap:14px;
+}
+.empty{
+  max-width:420px; text-align:center; color:var(--fg-dim); font-size:13.5px;
+  margin:36px 0 0; animation:rise var(--t-slow) var(--e-out) both;
+}
+.empty p{margin:0}
+.empty .sub{margin-top:7px;font-size:12.5px;opacity:.75;line-height:1.6}
+.empty b{color:var(--fg);font-weight:500}
+
+.log{width:100%;max-width:720px;display:flex;flex-direction:column;gap:12px;margin-top:26px}
 .msg{
-  border:1px solid var(--line);background:var(--panel);border-radius:14px;
+  border:1px solid var(--line);background:var(--panel);border-radius:var(--r-panel);
   padding:12px 15px;box-shadow:var(--shadow);
   animation:rise var(--t-slow) var(--e-out) both;
 }
@@ -199,7 +276,7 @@ body[data-state="thinking"] .dots{opacity:1}
 /* Freigabe: die einzige Stelle, an der die UI den Nutzer aktiv blockiert —
    entsprechend deutlich, aber ohne Alarmfarbe. Entrance mit Anticipation. */
 .perm{
-  border:1px solid var(--think); border-radius:14px; padding:13px 15px;
+  border:1px solid var(--think); border-radius:var(--r-panel); padding:13px 15px;
   background:var(--panel); box-shadow:var(--shadow);
   animation:permin var(--t-slow) var(--e-out) both;
 }
@@ -239,40 +316,45 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}
   40%{transform:translateX(9px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 
-/* Einstellungen und Verlauf: gleiche Kachel wie die Aktivitätsspur, damit der
-   Kopf nicht bei zehn Bedienelementen umbricht. */
-.panel{
-  width:100%; margin-top:16px; padding:14px 16px;
-  border:1px solid var(--line); border-radius:12px; background:var(--panel);
-  box-shadow:var(--shadow); animation:rise var(--t-std) var(--e-out) both;
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px 18px;
-}
-.panel label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--fg-dim)}
-.panel select{
+/* Formularfelder in der Leiste. Label über dem Feld, wie überall sonst auch. */
+.sgroup label{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:var(--fg-dim)}
+.sgroup select{
   font:inherit; font-size:13px; color:var(--fg); background:var(--bg);
-  border:1px solid var(--line); border-radius:9px; padding:7px 9px; cursor:pointer;
+  border:1px solid var(--line); border-radius:var(--r-field); padding:7px 9px; cursor:pointer;
   transition:border-color var(--t-quick) var(--e);
 }
-.panel select:hover{border-color:var(--fg-dim)}
-.panel select#perm.risky{color:var(--err);border-color:var(--err)}
+.sgroup select:hover{border-color:var(--fg-dim)}
+.slider{display:flex;flex-direction:column;gap:4px}
+.slider input[type=range]{
+  -webkit-appearance:none; appearance:none; width:100%; height:3px; border-radius:2px;
+  background:var(--line); cursor:pointer;
+}
+.slider input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+  background:var(--accent); border:0; cursor:pointer;
+  transition:transform var(--t-quick) var(--e);
+}
+.slider input[type=range]:active::-webkit-slider-thumb{transform:scale(1.25)}
+.slider output{font-size:12.5px;color:var(--fg)}
+.sgroup select#perm.risky{color:var(--err);border-color:var(--err)}
 
-.hist{display:block;max-height:260px;overflow-y:auto;padding:8px}
+.hist{flex:1;min-height:0;overflow-y:auto;margin:0 -8px}
 .hist .row{
-  display:flex; gap:10px; align-items:baseline; padding:8px 10px; border-radius:9px;
+  display:flex; flex-direction:column; gap:2px; padding:7px 8px; border-radius:8px;
   cursor:pointer; transition:background var(--t-quick) var(--e);
 }
 .hist .row:hover{background:var(--accent-soft)}
-.hist .row.now{color:var(--listen);cursor:default}
+.hist .row.now{cursor:default}
 .hist .row.now:hover{background:none}
-.hist .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--fg)}
+.hist .t{font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hist .row.now .t{color:var(--listen)}
-.hist .d{flex:none;font-size:11.5px;color:var(--fg-dim)}
-.hist .empty{padding:10px;color:var(--fg-dim);font-size:13px}
+.hist .d{font-size:10.5px;color:var(--fg-dim)}
+.hist .empty{padding:6px 8px;color:var(--fg-dim);font-size:12.5px}
 
 /* Aktivitätsspur: bewusst nüchtern und dicht — sie soll überflogen werden,
    nicht gelesen. Monospace, weil hier Pfade und Befehle stehen. */
 .act{
-  width:100%; margin-top:18px; border:1px solid var(--line); border-radius:12px;
+  width:100%; max-width:720px; border:1px solid var(--line); border-radius:var(--r-panel);
   background:var(--panel); box-shadow:var(--shadow); overflow:hidden;
   animation:rise var(--t-std) var(--e-out) both;
 }
@@ -288,6 +370,17 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .act .res{opacity:.55}
 .act .empty{opacity:.5}
 
+@media (max-width:1000px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{
+    position:fixed; z-index:5; left:0; top:0; width:284px;
+    transform:translateX(-100%); transition:transform var(--t-std) var(--e);
+    box-shadow:var(--shadow);
+  }
+  body[data-side="open"] .side{transform:none}
+  .only-narrow{display:inline-block}
+}
+
 @media (prefers-reduced-motion:reduce){
   *,*::after{animation:none!important;transition-duration:1ms!important}
 }
@@ -296,62 +389,102 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 <body data-state="idle">
 <div class="ambient"></div>
 
-<header>
-  <span class="dot"></span><b>Claude Voice</b>
-  <span class="sp"></span>
-  <span class="chip" id="cwd" title="Arbeitsverzeichnis der Session">…</span>
-  <span class="chip" id="cfg" title="Laufendes Modell">…</span>
-  <button class="chip" id="settoggle" title="Sprachausgabe, Modell, Sprache, Berechtigungen">Einstellungen</button>
-  <button class="chip" id="histtoggle" title="Frühere Sessions">Verlauf</button>
-  <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
-  <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
-  <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
-  <button class="chip" id="stop" title="Laufenden Turn abbrechen (Esc)">Abbrechen</button>
-  <button class="chip danger" id="quit" title="Server beenden und Session schließen">Beenden</button>
-</header>
+<div class="shell">
+  <aside class="side" id="side">
+    <div class="brand"><span class="dot"></span><b>Claude Voice</b></div>
 
-<main>
-  <div class="stage">
-    <canvas id="viz" width="600" height="600"></canvas>
-    <span class="pulse"></span><span class="pulse"></span>
-    <button class="orb" id="orb" aria-label="Aufnahme starten">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
-           stroke-linecap="round" stroke-linejoin="round">
-        <rect x="9" y="2" width="6" height="12" rx="3"/>
-        <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/>
-      </svg>
-    </button>
-  </div>
-  <div class="label" id="label">Bereit</div>
-  <div class="dots"><i></i><i></i><i></i></div>
-  <div class="meter" id="meter"><span></span></div>
-  <div class="preview" id="preview"></div>
-  <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>Esc</kbd> stoppt</div>
-  <div class="panel" id="settings" hidden>
-    <label>Sprachausgabe<select id="backend"></select></label>
-    <label>Stimme<select id="voice"></select></label>
-    <label>Modell<select id="model">
-      <option value="">wie konfiguriert</option>
-      <option value="claude-opus-5">Opus 5</option>
-      <option value="claude-sonnet-5">Sonnet 5</option>
-      <option value="claude-haiku-4-5">Haiku 4.5</option>
-    </select></label>
-    <label>Sprache<select id="lang">
-      <option value="de">Deutsch</option>
-      <option value="en">English</option>
-      <option value="auto">automatisch erkennen</option>
-    </select></label>
-    <label>Werkzeuge<select id="perm">
-      <option value="default">fragt nach</option>
-      <option value="acceptEdits">Edits ohne Rückfrage</option>
-      <option value="plan">nur planen</option>
-      <option value="bypassPermissions">ohne jede Rückfrage</option>
-    </select></label>
-  </div>
-  <div class="panel hist" id="history" hidden></div>
-  <div class="log" id="log"></div>
-  <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
-</main>
+    <section class="sgroup" id="settings">
+      <h2>Einstellungen</h2>
+      <label>Sprachausgabe<select id="backend"></select></label>
+      <label>Stimme<select id="voice"></select></label>
+      <label>Modell<select id="model">
+        <option value="">wie konfiguriert</option>
+        <optgroup label="Fable">
+          <option value="claude-fable-5">Fable 5</option>
+        </optgroup>
+        <optgroup label="Opus">
+          <option value="claude-opus-5">Opus 5</option>
+          <option value="claude-opus-4-8">Opus 4.8</option>
+          <option value="claude-opus-4-7">Opus 4.7</option>
+          <option value="claude-opus-4-6">Opus 4.6</option>
+        </optgroup>
+        <optgroup label="Sonnet">
+          <option value="claude-sonnet-5">Sonnet 5</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+        </optgroup>
+        <optgroup label="Haiku">
+          <option value="claude-haiku-4-5">Haiku 4.5</option>
+        </optgroup>
+      </select></label>
+      <label>Denktiefe<span class="slider">
+        <input type="range" id="effort" min="0" max="5" step="1" value="0">
+        <output id="effortout">wie konfiguriert</output>
+      </span></label>
+      <label>Sprache<select id="lang">
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+        <option value="auto">automatisch erkennen</option>
+      </select></label>
+      <label>Werkzeuge<select id="perm">
+        <option value="default">fragt nach</option>
+        <option value="acceptEdits">Edits ohne Rückfrage</option>
+        <option value="plan">nur planen</option>
+        <option value="bypassPermissions">ohne jede Rückfrage</option>
+      </select></label>
+    </section>
+
+    <section class="sgroup grow">
+      <h2>Verlauf<button class="mini" id="histreload" title="Neu laden">aktualisieren</button></h2>
+      <div class="hist" id="history"></div>
+    </section>
+  </aside>
+
+  <main>
+    <header>
+      <button class="chip only-narrow" id="sidetoggle" title="Seitenleiste">Menü</button>
+      <span class="ctx">
+        <b id="cfg" title="Laufendes Modell">…</b>
+        <span class="sp2">·</span>
+        <span id="cwd" title="Arbeitsverzeichnis der Session">…</span>
+      </span>
+      <span class="sp"></span>
+      <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
+      <button class="chip" id="livetoggle" title="Freihändig: hört durchgehend zu, du kannst dazwischenreden">Freihändig</button>
+      <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
+      <button class="chip" id="stop" title="Laufenden Turn abbrechen (Esc)">Abbrechen</button>
+      <button class="chip danger" id="quit" title="Server beenden und Session schließen">Beenden</button>
+    </header>
+
+    <section class="top">
+      <div class="stage">
+        <canvas id="viz" width="600" height="600"></canvas>
+        <span class="pulse"></span><span class="pulse"></span>
+        <button class="orb" id="orb" aria-label="Aufnahme starten">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/>
+          </svg>
+        </button>
+      </div>
+      <div class="label" id="label">Bereit</div>
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="meter" id="meter"><span></span></div>
+      <div class="preview" id="preview"></div>
+      <div class="hint" id="hint">Klick zum Sprechen · <kbd>Leertaste</kbd> halten · <kbd>Esc</kbd> stoppt</div>
+    </section>
+
+    <section class="feed" id="feed">
+      <div class="empty" id="empty">
+        <p>Noch nichts gesprochen.</p>
+        <p class="sub">Halte die Leertaste oder klicke auf den Kreis. Für ein durchgehendes
+           Gespräch schalte oben <b>Freihändig</b> ein.</p>
+      </div>
+      <div class="log" id="log"></div>
+      <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
+    </section>
+  </main>
+</div>
 
 <script>
 const $ = s => document.querySelector(s)
@@ -363,7 +496,7 @@ const GLOW = { idle:'--accent', listening:'--listen', transcribing:'--accent',
                waiting:'--think' }
 const TEXT = { idle:'Bereit', listening:'Hört zu…', transcribing:'Verstehe…',
                thinking:'Denkt nach…', speaking:'Spricht…', error:'Fehler',
-               off:'Beendet — das Fenster kann zu',
+               off:'Beendet. Das Fenster kann zu.',
                waiting:'Wartet auf deine Freigabe' }
 
 let state = 'idle', stream, ac, analyser, data, rec, chunks = [], busy = false
@@ -381,6 +514,11 @@ function setState (s) {
   $('.dot').style.background = c
 }
 
+function zeigeLeer () {
+  const el = $('#empty')
+  if (el) el.hidden = log.children.length > 0 || !!document.querySelector('.perm')
+}
+
 function add (who, text, cls, meta) {
   const el = document.createElement('div')
   el.className = 'msg ' + (cls || '')
@@ -390,6 +528,7 @@ function add (who, text, cls, meta) {
   el.querySelector('.body').textContent = text
   if (meta) el.querySelector('.meta').textContent = meta
   log.append(el)
+  zeigeLeer()
   el.scrollIntoView({ behavior:'smooth', block:'end' })
   return el
 }
@@ -567,7 +706,7 @@ addEventListener('keyup', e => {
 $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
   stopAudio()
-  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
+  log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false; zeigeLeer()
   setState('idle'); label.textContent = 'Neue Session'
 })
 
@@ -686,7 +825,7 @@ function onVad (m) {
   if (m.type === 'level') { live.level = m.rms; live.floor = m.floor; drawMeter(); return }
   if (m.type === 'ready') {
     live.floor = m.floor
-    hint.textContent = 'Freihändig — sprich einfach los, du kannst dazwischenreden'
+    hint.textContent = 'Freihändig aktiv. Sprich einfach los, du kannst dazwischenreden.'
     return
   }
   if (!live.on) return
@@ -734,24 +873,14 @@ $('#livetoggle').addEventListener('click', () => setLive(!live.on))
 if (localStorage.getItem('claude-voice-live') === '1') {
   $('#livetoggle').classList.add('active')
   addEventListener('pointerdown', () => { if (!live.on) setLive(true) }, { once: true })
-  hint.textContent = 'Freihändig ist vorgemerkt — einmal irgendwo klicken zum Aktivieren'
+  hint.textContent = 'Freihändig ist vorgemerkt. Einmal irgendwo klicken zum Aktivieren.'
 }
 
 // ── Einstellungs- und Verlaufsleiste ─────────────────────────────────
-function panelToggle (btn, panel, key, onOpen) {
-  let open = localStorage.getItem(key) === '1'
-  panel.hidden = !open
-  btn.classList.toggle('active', open)
-  if (open && onOpen) onOpen()
-  btn.addEventListener('click', () => {
-    open = !open
-    panel.hidden = !open
-    btn.classList.toggle('active', open)
-    localStorage.setItem(key, open ? '1' : '0')
-    if (open && onOpen) onOpen()
-  })
-}
-panelToggle($('#settoggle'), $('#settings'), 'claude-voice-settings')
+// Die Leiste steht ab 1000 px fest; darunter schiebt sie sich als Überlagerung ein.
+$('#sidetoggle').addEventListener('click', () => {
+  document.body.dataset.side = document.body.dataset.side === 'open' ? '' : 'open'
+})
 
 // ── Verlauf ──────────────────────────────────────────────────────────
 const hist = $('#history')
@@ -775,7 +904,7 @@ async function ladeVerlauf () {
       const row = document.createElement('div')
       row.className = 'row' + (x.aktuell ? ' now' : '')
       const t = document.createElement('span'); t.className = 't'
-      t.textContent = x.titel + (x.aktuell ? '  · läuft gerade' : '')
+      t.textContent = x.titel
       const d = document.createElement('span'); d.className = 'd'; d.textContent = seit(x.zuletzt)
       row.append(t, d)
       row.title = x.id
@@ -789,12 +918,13 @@ async function fortsetzen (id, titel) {
   try {
     await post('/api/resume', JSON.stringify({ id }), 'application/json')
     stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear()
-    liveBubbleEl = null; busy = false; setState('idle')
+    liveBubbleEl = null; busy = false; setState('idle'); zeigeLeer()
     add('Session', `Fortgesetzt: ${titel}`, '')
     ladeVerlauf()
   } catch (e) { showError(e, e.code) }
 }
-panelToggle($('#histtoggle'), $('#history'), 'claude-voice-hist', ladeVerlauf)
+$('#histreload').addEventListener('click', ladeVerlauf)
+ladeVerlauf()
 
 // ── Aktivitätsspur ───────────────────────────────────────────────────
 // Eine lange Antwort mit Werkzeugaufrufen sieht sonst nach Stillstand aus.
@@ -850,7 +980,7 @@ function prettyVoice (backend, id, name) {
     const m = /^de_DE-([a-z_]+)-(x_low|low|medium|high)$/.exec(id)
     if (m) {
       const q = { x_low:'sehr grob', low:'grob', medium:'mittel', high:'fein' }[m[2]]
-      return `${m[1][0].toUpperCase()}${m[1].slice(1).replace('_', ' ')} — ${q}`
+      return `${m[1][0].toUpperCase()}${m[1].slice(1).replace('_', ' ')}, ${q}`
     }
   }
   if (backend === 'edge') {
@@ -869,6 +999,10 @@ function prettyModel (id) {
   return `${fam} ${m[2]}${m[3] ? '.' + m[3] : ''}`
 }
 
+// Der Gedankenstrich ist in dieser Oberfläche unerwünscht: er liest sich als
+// Stilmittel, nicht als Information. Punkt, Komma oder Klammer tun es.
+
+
 function setPermUI (mode) {
   const sel = $('#perm')
   if ([...sel.options].some(o => o.value === mode)) sel.value = mode
@@ -880,8 +1014,20 @@ $('#model').addEventListener('change', async e => {
   try {
     const r = await post('/api/model', JSON.stringify({ model }), 'application/json')
     add('Modell', (model ? prettyModel(model) : 'wie konfiguriert') +
-        (r.applied ? '' : ' — gilt ab der nächsten Session'), '')
+        (r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
     if (r.applied) $('#cfg').textContent = prettyModel(model || null)
+  } catch (err) { showError(err, err.code) }
+})
+
+const EFFORT = [null, 'low', 'medium', 'high', 'xhigh', 'max']
+const EFFORT_TEXT = ['wie konfiguriert', 'niedrig', 'mittel', 'hoch', 'sehr hoch', 'maximal']
+$('#effort').addEventListener('input', e => { $('#effortout').textContent = EFFORT_TEXT[+e.target.value] })
+$('#effort').addEventListener('change', async e => {
+  const effort = EFFORT[+e.target.value]
+  try {
+    const r = await post('/api/effort', JSON.stringify({ effort }), 'application/json')
+    add('Denktiefe', EFFORT_TEXT[+e.target.value] + (r.restarted
+      ? '. Neue Session gestartet, weil die Stufe beim Start gesetzt wird.' : ''), '')
   } catch (err) { showError(err, err.code) }
 })
 
@@ -891,7 +1037,7 @@ $('#lang').addEventListener('change', async e => {
     const r = await post('/api/language', JSON.stringify({ lang }), 'application/json')
     const name = e.target.options[e.target.selectedIndex].text
     add('Sprache', name + (r.restarted
-      ? ' — neue Session gestartet, weil die Antwortsprache am Systemprompt hängt' : ''), '')
+      ? '. Neue Session gestartet, weil die Antwortsprache am Systemprompt hängt.' : ''), '')
     if (r.restarted) { log.querySelectorAll('.msg.live').forEach(x => x.remove()); liveBubbleEl = null }
   } catch (err) { showError(err, err.code) }
 })
@@ -902,7 +1048,7 @@ $('#perm').addEventListener('change', async e => {
     const r = await post('/api/permission-mode', JSON.stringify({ mode }), 'application/json')
     setPermUI(mode)
     add('Modus', `Werkzeuge: ${PERM[mode]}` +
-        (r.applied ? '' : ' — gilt ab der nächsten Session'), '')
+        (r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
   } catch (err) { showError(err, err.code) }
 })
 
@@ -990,6 +1136,7 @@ es.addEventListener('permission', e => {
   el.querySelector('.ok').addEventListener('click', () => answer('allow'))
   el.querySelector('.no').addEventListener('click', () => answer('deny'))
   log.append(el)
+  zeigeLeer()
   el.scrollIntoView({ behavior:'smooth', block:'end' })
 })
 
@@ -1014,7 +1161,7 @@ function fillVoices () {
   sel.innerHTML = ''
   if (!b || !b.voices.length) {
     sel.disabled = true
-    sel.append(new Option(b && b.id === 'auto' ? 'Stimme aus Konfig' : '—', ''))
+    sel.append(new Option(b && b.id === 'auto' ? 'Stimme aus Konfig' : 'keine Auswahl', ''))
     return
   }
   sel.disabled = false
@@ -1066,6 +1213,8 @@ fetch('/api/config', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).
   setPermUI(c.permissionMode)
   if (c.modelOverride) $('#model').value = c.modelOverride
   if (c.lang) $('#lang').value = c.lang
+  const ei = Math.max(0, EFFORT.indexOf(c.effort ?? null))
+  $('#effort').value = ei; $('#effortout').textContent = EFFORT_TEXT[ei]
 }).catch(() => {})
 
 // Diagnosezugang: die Zustandsvariablen sind skript-lokal und sonst von außen

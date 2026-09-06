@@ -189,6 +189,7 @@ let S = null   // { q, send, pending, sessionId }
 let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
 let modelOverride = null
 let lang = 'de'
+let effort = null   // null = wie vom Modell vorgegeben
 
 // Der Systemprompt ist je Session fest — eine Sprachumstellung braucht daher
 // eine neue Session. Für Deutsch gilt weiter der Text aus der Konfig.
@@ -216,6 +217,7 @@ function startSession (conf, resumeId) {
       cwd: CWD,
       ...(resumeId ? { resume: resumeId } : {}),
       permissionMode: permMode || conf.PERMISSION_MODE,
+      ...(effort ? { effort } : {}),
       includePartialMessages: true,
       ...((modelOverride || conf.CLAUDE_MODEL) ? { model: modelOverride || conf.CLAUDE_MODEL } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code', append: PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT },
@@ -361,7 +363,8 @@ const server = createServer(async (req, res) => {
         session: S?.sessionId || null,
         cwd: CWD,
         lang,
-        modelOverride
+        modelOverride,
+        effort
       })
     }
 
@@ -420,6 +423,17 @@ const server = createServer(async (req, res) => {
       if (S) { try { await S.q.setModel(modelOverride || undefined) } catch (e) {
         return json(res, 500, { error: String(e?.message || e) }) } }
       return json(res, 200, { ok: true, model: modelOverride, applied: !!S })
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/effort') {
+      const { effort: e } = JSON.parse((await body(req)).toString('utf8'))
+      const allowed = [null, '', 'low', 'medium', 'high', 'xhigh', 'max']
+      if (!allowed.includes(e)) return json(res, 400, { error: 'unbekannte Stufe' })
+      effort = e || null
+      // Die Denktiefe wird beim Sessionstart gesetzt; es gibt kein setEffort.
+      let restarted = false
+      if (S) { await stopSpeech(); try { S.q.close() } catch {}; S = null; restarted = true }
+      return json(res, 200, { ok: true, effort, restarted })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/language') {

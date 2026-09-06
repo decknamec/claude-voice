@@ -9,6 +9,8 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PASS=0; FAIL=0
 ok(){ PASS=$((PASS+1)); printf '  \033[32mok\033[0m   %s\n' "$1"; }
 no(){ FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m %s\n' "$1"; [ -n "${2:-}" ] && printf '       %s\n' "$2"; }
+# Ohne -q laufen Pipes zu Ende: mit pipefail wuerde ein `| grep -q` den
+# Vorgaenger per SIGPIPE toeten und die Pipeline als Fehler zaehlen.
 t(){ if eval "$2" >/dev/null 2>&1 </dev/null; then ok "$1"; else no "$1" "${3:-}"; fi; }
 
 SH="$REPO/bin/claude-say $REPO/bin/claude-voice $REPO/bin/claude-voice-ui
@@ -112,7 +114,7 @@ t "jedes \$('#id') hat sein Element im Markup" \
 # Vorher hing das Einklappen komplett in @media (max-width:1000px) — auf breiten
 # Fenstern gab es also gar keinen Weg, die Leiste wegzubekommen.
 t "Seitenleiste laesst sich in jeder Breite einklappen" \
-  "sed '/@media[^{]*width/q' '$REPO/ui/index.html' | grep -q 'data-side=.off.. main'" \
+  "[ -n \"\$(sed '/@media[^{]*width/q' '$REPO/ui/index.html' | grep 'data-side=.off.. main')\" ]" \
   "die Einklapp-Regel darf nicht nur in einer Breiten-Query stehen"
 
 t "hidden schlaegt eigene display-Regeln" \

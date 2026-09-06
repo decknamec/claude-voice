@@ -12,7 +12,7 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -191,12 +191,87 @@ async function transcribe (buf, conf) {
   } finally { await rm(dir, { recursive: true, force: true }) }
 }
 
+// ── Alte Verlaeufe ───────────────────────────────────────────────────
+// resume startet die Session zwar mit vollem Gedaechtnis, aber das Fenster
+// bleibt leer — man sieht nicht, worueber man geredet hat. Also den
+// Verlauf aus dem Transkript nachziehen.
+function transkriptPfad (id) {
+  const root = join(HOME, '.claude', 'projects')
+  const direkt = join(root, CWD.replace(/[/.]/g, '-'), id + '.jsonl')
+  if (existsSync(direkt)) return direkt
+  // Die Session kann unter einem anderen Projektordner liegen, etwa wenn sie
+  // aus einem Unterverzeichnis gestartet wurde.
+  try {
+    for (const d of readdirSync(root)) {
+      const p = join(root, d, id + '.jsonl')
+      if (existsSync(p)) return p
+    }
+  } catch {}
+  return null
+}
+
+function leseTranskript (id, max = 300) {
+  const pfad = transkriptPfad(id)
+  if (!pfad) return null
+  const out = []
+  const anhaengen = (rolle, text) => {
+    const t = text.trim()
+    if (!t) return
+    const letzt = out[out.length - 1]
+    // Ganze Laeufe von Werkzeugaufrufen zu einer Zeile buendeln — einzeln
+    // aufgelistet verdraengen sie das eigentliche Gespraech aus dem Fenster.
+    if (rolle === 'werkzeug') {
+      if (letzt?.rolle === 'werkzeug') {
+        letzt.n += 1
+        if (!letzt.namen.includes(t) && letzt.namen.length < 4) letzt.namen.push(t)
+      } else out.push({ rolle, namen: [t], n: 1 })
+      return
+    }
+    // Der Stream zerlegt eine Antwort in mehrere Bloecke — wieder zusammenfuegen.
+    if (letzt && letzt.rolle === rolle) letzt.text += ' ' + t
+    else out.push({ rolle, text: t })
+  }
+  for (const zeile of readFileSync(pfad, 'utf8').split('\n')) {
+    if (!zeile) continue
+    let e; try { e = JSON.parse(zeile) } catch { continue }
+    if (e.isSidechain) continue        // Unteragenten gehoeren nicht in den Verlauf
+    const c = e.message?.content
+    if (e.type === 'user') {
+      const t = typeof c === 'string' ? c
+        : Array.isArray(c) ? c.filter(b => b.type === 'text').map(b => b.text).join(' ') : ''
+      // Werkzeugergebnisse und Hook-Einwuerfe kommen ebenfalls als user-Zeile.
+      if (t && !t.startsWith('<')) anhaengen('du', t)
+    } else if (e.type === 'assistant' && Array.isArray(c)) {
+      anhaengen('claude', c.filter(b => b.type === 'text').map(b => b.text).join(' '))
+      for (const b of c) if (b.type === 'tool_use') anhaengen('werkzeug', b.name)
+    }
+  }
+  return out.slice(-max)
+}
+
 // ── Die persistente Session ──────────────────────────────────────────
 let S = null   // { q, send, pending, sessionId }
 let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
 let modelOverride = null
 let lang = 'de'
 let effort = null   // null = wie vom Modell vorgegeben
+
+// Was Claude Code im Terminal in der Statuszeile zeigt: Dauer, Tokens, Kosten,
+// Fuellstand des Kontextfensters. Ohne das ist nicht einzuschaetzen, ob eine
+// Session gleich an die Grenze laeuft.
+const leereStats = () => ({
+  turns: 0, inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0,
+  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null
+})
+let stats = leereStats()
+
+function summeUsage (u) {
+  if (!u) return
+  stats.inTok     += u.input_tokens || 0
+  stats.outTok    += u.output_tokens || 0
+  stats.cacheRead += u.cache_read_input_tokens || 0
+  stats.cacheWrite += u.cache_creation_input_tokens || 0
+}
 
 // Der Systemprompt ist je Session fest — eine Sprachumstellung braucht daher
 // eine neue Session. Für Deutsch gilt weiter der Text aus der Konfig.
@@ -217,6 +292,7 @@ function startSession (conf, resumeId) {
   }
 
   const pending = new Map()   // Freigabe-Anfragen, auf die die UI antworten muss
+  const subagents = new Set()  // laufende Task-Aufrufe, fuer die Uebersicht
 
   const q = query({
     prompt: input(),
@@ -242,7 +318,7 @@ function startSession (conf, resumeId) {
   })
 
   S = {
-    q, pending,
+    q, pending, subagents,
     send (text) {
       inbox.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
       if (wake) { wake(); wake = null }
@@ -271,26 +347,58 @@ function startSession (conf, resumeId) {
             if (cut > spoken) { enqueueSpeech(buf.slice(spoken, cut), conf); spoken = cut }
           }
         } else if (msg.type === 'assistant') {
+          // Unteragenten reden nicht mit dem Nutzer: ihr Text gehoert in die
+          // Uebersicht, nicht in den Gespraechsverlauf.
+          const parent = msg.parent_tool_use_id || null
           const blocks = msg.message?.content || []
           const text = blocks.filter(b => b.type === 'text').map(b => b.text).join(' ')
-          if (text) push('message', { role: 'assistant', text })
+          if (text && !parent) push('message', { role: 'assistant', text })
+          if (text && parent) push('subagent', { phase: 'text', id: parent, text: text.slice(0, 300) })
           // Werkzeugaufrufe sichtbar machen — sonst ist eine lange Antwort eine
           // Blackbox, in der minutenlang nichts passiert zu sein scheint.
           for (const b of blocks) {
-            if (b.type === 'tool_use') push('tool', { phase: 'use', id: b.id, name: b.name, input: b.input })
+            if (b.type !== 'tool_use') continue
+            push('tool', { phase: 'use', id: b.id, name: b.name, input: b.input, parent })
+            // Das Werkzeug heisst je nach Fassung Agent oder Task.
+            if (b.name === 'Agent' || b.name === 'Task') {
+              subagents.add(b.id)
+              push('subagent', { phase: 'start', id: b.id,
+                                 typ: b.input?.subagent_type || 'general-purpose',
+                                 desc: b.input?.description || '' })
+            }
           }
         } else if (msg.type === 'user') {
+          const parent = msg.parent_tool_use_id || null
           for (const b of msg.message?.content || []) {
             if (b.type !== 'tool_result') continue
             const c = b.content
             const text = typeof c === 'string' ? c
               : Array.isArray(c) ? c.filter(x => x.type === 'text').map(x => x.text).join(' ') : ''
-            push('tool', { phase: 'result', id: b.tool_use_id, ok: !b.is_error, text: text.slice(0, 400) })
+            push('tool', { phase: 'result', id: b.tool_use_id, ok: !b.is_error, text: text.slice(0, 400), parent })
+            if (subagents.has(b.tool_use_id)) {
+              subagents.delete(b.tool_use_id)
+              push('subagent', { phase: 'done', id: b.tool_use_id, ok: !b.is_error })
+            }
           }
         } else if (msg.type === 'result') {
           if (buf.length > spoken) enqueueSpeech(buf.slice(spoken), conf)
           buf = ''; spoken = 0
+          stats.turns += 1
+          stats.lastMs = msg.duration_ms || 0
+          stats.apiMs += msg.duration_api_ms || 0
+          stats.costUsd += msg.total_cost_usd || 0
+          summeUsage(msg.usage)
           push('done', { subtype: msg.subtype, ms: msg.duration_ms })
+          push('stats', stats)
+          // Der Fuellstand kostet einen Kontrollaufruf, deshalb erst nach dem
+          // Zug und in der billigen Variante.
+          q.getContextUsage({ detail: 'summary' })
+            .then(c => {
+              stats.ctx = { tokens: c.totalTokens, max: c.maxTokens || c.rawMaxTokens,
+                            prozent: c.percentage, modell: c.model }
+              push('stats', stats)
+            })
+            .catch(() => {})
         } else if (msg.type === 'system') {
           if (msg.session_id) S.sessionId = msg.session_id
           if (msg.model) S.model = msg.model
@@ -428,8 +536,56 @@ const server = createServer(async (req, res) => {
       await stopSpeech()
       try { S?.q.close() } catch {}
       S = null
+      stats = leereStats()
       startSession(conf, id)
-      return json(res, 200, { ok: true, resumed: id })
+      return json(res, 200, { ok: true, resumed: id, verlauf: leseTranskript(id) })
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/transcript') {
+      const id = url.searchParams.get('id')
+      if (!id) return json(res, 400, { error: 'keine Session-ID' })
+      const verlauf = leseTranskript(id)
+      if (!verlauf) return json(res, 404, { error: 'kein Transkript zu dieser Session gefunden' })
+      return json(res, 200, { verlauf })
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/stats') {
+      return json(res, 200, stats)
+    }
+
+    // Die volle Aufschluesselung kostet Token-Zaehlaufrufe, daher nur auf Abruf.
+    if (req.method === 'GET' && url.pathname === '/api/context') {
+      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      try {
+        const c = await S.q.getContextUsage({ detail: url.searchParams.get('voll') ? 'full' : 'summary' })
+        return json(res, 200, {
+          tokens: c.totalTokens, max: c.maxTokens || c.rawMaxTokens,
+          prozent: c.percentage, modell: c.model,
+          kategorien: (c.categories || []).filter(k => k.tokens > 0)
+            .map(k => ({ name: k.name, tokens: k.tokens }))
+        })
+      } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/mcp') {
+      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      try {
+        const liste = await S.q.mcpServerStatus()
+        return json(res, 200, {
+          server: liste.map(m => ({
+            name: m.name, status: m.status, scope: m.scope || '',
+            version: m.serverInfo?.version || '',
+            fehler: m.error || '',
+            werkzeuge: (m.tools || []).map(t => t.name)
+          }))
+        })
+      } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/agents') {
+      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      try { return json(res, 200, { agents: await S.q.supportedAgents() }) }
+      catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
 
     if (req.method === 'POST' && url.pathname === '/api/model') {
@@ -467,11 +623,24 @@ const server = createServer(async (req, res) => {
       const allowed = ['default', 'acceptEdits', 'plan', 'bypassPermissions']
       if (!allowed.includes(mode)) return json(res, 400, { error: 'unbekannter Modus' })
       permMode = mode
+      let restarted = false
       // Läuft schon eine Session, gilt es sofort — sonst beim nächsten Start.
-      if (S) { try { await S.q.setPermissionMode(mode) } catch (e) {
-        return json(res, 500, { error: String(e?.message || e) }) } }
+      if (S) {
+        try { await S.q.setPermissionMode(mode) }
+        catch {
+          // bypassPermissions laesst sich an einer laufenden Session nicht
+          // nachtraeglich setzen; die CLI muss dafuer neu starten. Mit resume
+          // behaelt die neue Session den ganzen bisherigen Faden.
+          const alte = S.sessionId
+          await stopSpeech()
+          try { S.q.close() } catch {}
+          S = null
+          startSession(conf, alte)
+          restarted = true
+        }
+      }
       push('state', { state: 'idle' })
-      return json(res, 200, { ok: true, mode, applied: !!S })
+      return json(res, 200, { ok: true, mode, applied: !!S, restarted })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission') {
@@ -501,6 +670,8 @@ const server = createServer(async (req, res) => {
       stopSpeech()
       try { S?.q.close() } catch {}
       S = null
+      stats = leereStats()
+      push('stats', stats)
       return json(res, 200, { ok: true })
     }
 

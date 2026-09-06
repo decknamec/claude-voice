@@ -122,7 +122,11 @@ main{
   display:grid;
   grid-template-columns:minmax(0,1fr);   /* ohne definierte Spalte schrumpft
                                             die Kopfzeile auf Inhaltsbreite */
-  grid-template-rows:auto auto 1fr; min-width:0; min-height:100dvh;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+  min-width:0; height:100dvh;
+  /* Feste Hoehe statt min-height: sonst waechst die 1fr-Zeile mit dem Verlauf
+     mit, die ganze Seite scrollt und die Statusleiste rutscht unter den Rand.
+     So scrollt nur der Verlauf. */
 }
 
 /* ── Ambient-Layer: der Hintergrund atmet, damit die Seite nie tot wirkt ── */
@@ -281,6 +285,87 @@ body[data-state="transcribing"] .orb::after{opacity:1;animation:sweep 1.1s var(-
 @media (prefers-reduced-motion:reduce){ .sspin{animation:none} }
 .act .row.dim .nm{color:var(--fg-dim)}
 
+/* Statusleiste unten, wie die Statuszeile im Terminal: alles, was man im Blick
+   behalten will, ohne dass es den Gespraechsverlauf zerschneidet. */
+.status{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:8px 22px; border-top:1px solid var(--line); background:var(--panel);
+  font-size:11.5px; color:var(--fg-dim); font-variant-numeric:tabular-nums;
+}
+.status .si{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.status b{color:var(--fg);font-weight:500}
+button.si{
+  background:none; border:0; padding:3px 7px; margin:-3px -7px; border-radius:7px;
+  color:inherit; font:inherit; cursor:pointer;
+  transition:background var(--t-fast) var(--e);
+}
+button.si:hover{background:rgba(127,127,127,.14)}
+.ctxbar{width:52px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;flex:none}
+.ctxbar i{display:block;height:100%;width:0;border-radius:3px;background:var(--accent);
+          transition:width var(--t-std) var(--e), background var(--t-std) var(--e)}
+/* Ab zwei Dritteln wird es knapp — das soll auffallen, bevor es kippt. */
+.ctxbar.warn i{background:#d9a441}
+.ctxbar.hot i{background:var(--err)}
+
+/* Unteragenten laufen nebenher; ohne Uebersicht merkt man nur, dass es dauert. */
+/* Ankreuzfelder in den Einstellungen: gleiche Zeilenhoehe wie die Menues,
+   sonst franst die Spalte aus. */
+label.check{
+  display:flex;align-items:center;gap:9px;cursor:pointer;
+  font-size:12px;color:var(--fg-dim);padding:2px 0;
+}
+label.check input{
+  appearance:none;width:15px;height:15px;flex:none;border-radius:4px;
+  border:1px solid var(--line);background:var(--panel);cursor:pointer;
+  transition:background var(--t-fast) var(--e),border-color var(--t-fast) var(--e);
+}
+label.check input:checked{background:var(--accent);border-color:var(--accent)}
+label.check input:checked::after{
+  content:'';display:block;width:4px;height:8px;margin:1px auto 0;
+  border:solid #fff;border-width:0 1.6px 1.6px 0;transform:rotate(42deg);
+}
+label.check input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body[data-wz="aus"] .msg.wz{display:none}
+
+/* MCP-Server: Name, Zustand, Anzahl der Werkzeuge. */
+.mcps{display:flex;flex-direction:column;gap:6px}
+.mcps .none{font-size:11.5px;color:var(--fg-dim);opacity:.7}
+.mcp{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--fg-dim)}
+.mcp .pip{width:6px;height:6px;border-radius:50%;flex:none;background:var(--fg-dim)}
+.mcp.an .pip{background:#3fb27f}
+.mcp.aus .pip{background:var(--err)}
+.mcp.warte .pip{background:#d9a441}
+.mcp .n{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcp .c{margin-left:auto;flex:none;opacity:.7;font-variant-numeric:tabular-nums}
+
+.agents{display:flex;flex-direction:column;gap:8px}
+.agents .none{font-size:11.5px;color:var(--fg-dim);opacity:.7}
+.ag{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+    display:flex;flex-direction:column;gap:3px}
+.ag .h{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg)}
+.ag .h .pip{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none;
+            animation:agpulse 1.4s ease-in-out infinite}
+@keyframes agpulse{50%{opacity:.25}}
+.ag.fertig .pip{animation:none;background:var(--fg-dim)}
+.ag.schief .pip{animation:none;background:var(--err)}
+.ag .d{font-size:11px;color:var(--fg-dim);overflow:hidden;
+       display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ag .w{font-size:11px;color:var(--fg-dim);opacity:.8;
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:20px;
+       background:var(--line);color:var(--fg-dim);font-variant-numeric:tabular-nums}
+.badge.an{background:var(--accent);color:#fff}
+
+/* Wiederhergestellter Verlauf: abgesetzt, damit klar bleibt, was aus der alten
+   Sitzung stammt und was von jetzt ist. */
+.trenner{display:flex;align-items:center;gap:10px;width:100%;max-width:760px;
+         font-size:11px;color:var(--fg-dim);opacity:.75;margin:8px 0 2px}
+.trenner::before,.trenner::after{content:'';flex:1;height:1px;background:var(--line)}
+.msg.alt{opacity:.72}
+.msg.wz{opacity:.5;font-size:11.5px}
+
+@media (prefers-reduced-motion:reduce){ .ag .h .pip{animation:none} }
+
 .hint{font-size:12px;color:var(--fg-dim);opacity:.62;margin-top:6px;height:16px}
 kbd{font:inherit;font-size:11px;border:1px solid var(--line);border-radius:5px;
     padding:1px 5px;background:var(--panel)}
@@ -299,7 +384,7 @@ body[data-state="thinking"] .dots{opacity:1}
 .top{display:flex;flex-direction:column;align-items:center;padding:14px 24px 2px}
 .feed{
   padding:4px 24px 40px; overflow-y:auto; display:flex; flex-direction:column;
-  align-items:center; gap:14px;
+  align-items:center; gap:14px; min-height:0;
 }
 /* Zustandsänderungen gehören nicht in den Gesprächsverlauf — sie sind
    Rückmeldung der Oberfläche, nicht Teil des Gesprächs. */
@@ -503,7 +588,11 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
 .act .row + .row{margin-top:2px}
 .act .nm{color:var(--accent);flex:none;min-width:64px}
 .act .row.bad .nm{color:var(--err)}
-.act .arg{flex:1;opacity:.85}
+.act .arg{flex:1;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Lange Befehle sind zusammengefaltet — ein Klick zeigt sie ganz. */
+.act .row{cursor:pointer}
+.act .row.auf .arg,.act .row.auf .res{white-space:pre-wrap;overflow:visible}
+body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
 .act .res{opacity:.55}
 .act /* Zustandsänderungen gehören nicht in den Gesprächsverlauf — sie sind
    Rückmeldung der Oberfläche, nicht Teil des Gesprächs. */
@@ -611,6 +700,10 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
         <option value="en">English</option>
         <option value="auto">automatisch erkennen</option>
       </select></label>
+      <label class="check"><input type="checkbox" id="showwz" checked>
+        <span>Werkzeugzeilen im Verlauf</span></label>
+      <label class="check"><input type="checkbox" id="wrapwz">
+        <span>Befehle vollständig zeigen</span></label>
       <label>Werkzeuge<select id="perm">
         <option value="default">fragt nach</option>
         <option value="acceptEdits">Edits ohne Rückfrage</option>
@@ -620,6 +713,14 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
       </div>
     </details>
 
+    <details class="sgroup" id="grp-mcp">
+      <summary>MCP-Server<span class="badge" id="mcpcount">–</span></summary>
+      <div class="gbody"><div class="mcps" id="mcps"></div></div>
+    </details>
+    <details class="sgroup" id="grp-agents">
+      <summary>Unteragenten<span class="badge" id="agcount">0</span></summary>
+      <div class="gbody"><div class="agents" id="agents"></div></div>
+    </details>
     <details class="sgroup grow" id="grp-hist" open>
       <summary>Verlauf<button class="mini" id="histreload" title="Neu laden">aktualisieren</button></summary>
       <div class="gbody grow"><div class="hist" id="history"></div></div>
@@ -681,6 +782,18 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
       <div class="log" id="log"></div>
       <div class="act" id="act" hidden><div class="actinner" id="actinner"></div></div>
     </section>
+    <footer class="status" id="status">
+      <span class="si" title="Laufzeit dieser Session"><b id="stDauer">0:00</b></span>
+      <span class="si" title="Abgeschlossene Züge"><b id="stTurns">0</b> Züge</span>
+      <span class="si" title="Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen">
+        <b id="stTok">0 ↑ 0 ↓</b></span>
+      <button class="si ctxi" id="stCtxBtn"
+              title="Füllstand des Kontextfensters · klicken für die Aufschlüsselung">
+        <span class="ctxbar" id="stCtxBar"><i id="stCtxFill"></i></span><b id="stCtx">–</b></button>
+      <span class="si" title="Kosten laut SDK"><b id="stCost">–</b></span>
+      <span class="sp"></span>
+      <button class="si mode" id="stMode" title="Werkzeug-Modus · Umschalt+Tab wechselt">fragt nach</button>
+    </footer>
   </main>
 </div>
 
@@ -692,7 +805,9 @@ const $ = s => document.querySelector(s)
 ;(() => {
   const noetig = ['orb','label','hint','log','feed','act','actinner','empty','meter','preview',
                   'viz','toasts','keys','backend','voice','model','lang','perm','effort',
-                  'step','steptxt','stepsec',
+                  'step','steptxt','stepsec','status','stDauer','stTurns','stTok',
+                  'stCtx','stCtxFill','stCtxBar','stCtxBtn','stCost','stMode',
+                  'agents','agcount','mcps','mcpcount','showwz','wrapwz',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
   const fehlt = noetig.filter(id => !document.getElementById(id))
   if (!fehlt.length) return
@@ -743,7 +858,8 @@ function stepHide () {
 const TOOLVERB = { Bash:'Führt aus', Read:'Liest', Write:'Schreibt', Edit:'Ändert',
                    Glob:'Sucht Dateien', Grep:'Durchsucht', WebFetch:'Lädt',
                    WebSearch:'Sucht im Netz', Task:'Startet Unteragent',
-                   TodoWrite:'Plant', NotebookEdit:'Ändert Notebook' }
+                   TodoWrite:'Plant', NotebookEdit:'Ändert Notebook',
+                   Agent:'Startet Unteragent' }
 const NURNAME = new Set(['Read','Write','Edit','NotebookEdit'])
 
 function stepLabel (name, input) {
@@ -977,6 +1093,8 @@ addEventListener('keydown', e => {
   if (e.key === 'a' || e.key === 'A') { e.preventDefault(); $('#acttoggle').click(); return }
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); $('#reset').click(); return }
   if (e.key === 's' || e.key === 'S') { e.preventDefault(); $('#sidetoggle').click(); return }
+  // Wie im Terminal: Umschalt+Tab geht die Werkzeug-Modi durch.
+  if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); modusWeiter(); return }
   if (e.code === 'Space' && !e.repeat && !held) { e.preventDefault(); held = true; start() }
   if (e.code === 'Escape') { e.preventDefault(); interrupt() }
 })
@@ -988,7 +1106,11 @@ $('#reset').addEventListener('click', async () => {
   await post('/api/reset', '{}', 'application/json').catch(() => {})
   stopAudio()
   log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); liveBubbleEl = null; busy = false
-  stepHide(); thinkReset(); zeigeLeer()
+  stepHide(); thinkReset(); agents.clear(); zeichneAgents()
+  sessionStart = Date.now()
+  zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
+  $('#stCtx').textContent = '–'; $('#stCtxFill').style.width = '0%'
+  zeigeLeer()
   setState('idle'); label.textContent = 'Neue Session'
 })
 
@@ -1212,11 +1334,45 @@ async function ladeVerlauf () {
   } catch (e) { hist.innerHTML = ''; hist.append(Object.assign(document.createElement('div'), { className: 'empty', textContent: 'Verlauf nicht lesbar: ' + e.message })) }
 }
 
+// Der wiederhergestellte Verlauf. resume gibt der Session zwar ihr volles
+// Gedaechtnis zurueck, aber das Fenster blieb leer — man sah nicht, worueber
+// man geredet hatte.
+function zeigeAltenVerlauf (verlauf, titel) {
+  if (!verlauf?.length) {
+    trennerZeile('Kein Transkript zu dieser Sitzung gefunden — das Gedächtnis der Session ist trotzdem da')
+    return
+  }
+  let beitraege = 0
+  for (const b of verlauf) {
+    if (b.rolle === 'werkzeug') {
+      add('', b.n > 1 ? `↳ ${b.n} Werkzeugaufrufe · ${b.namen.join(', ')}` : '↳ ' + b.namen[0], 'alt wz')
+    } else {
+      beitraege += 1
+      add(b.rolle === 'du' ? 'Du' : 'Claude', b.text, 'alt')
+    }
+  }
+  trennerZeile(`${beitraege} Beiträge aus „${titel}" wiederhergestellt — hier geht es weiter`)
+}
+
+function trennerZeile (text) {
+  const el = document.createElement('div')
+  el.className = 'trenner'
+  el.append(Object.assign(document.createElement('span'), { textContent: text }))
+  log.append(el)
+  zeigeLeer()
+  el.scrollIntoView({ block: 'end' })
+}
+
 async function fortsetzen (id, titel) {
   try {
-    await post('/api/resume', JSON.stringify({ id }), 'application/json')
+    const r = await post('/api/resume', JSON.stringify({ id }), 'application/json')
     stopAudio(); log.innerHTML = ''; act.innerHTML = ''; actRows.clear(); stepHide(); thinkReset()
-    liveBubbleEl = null; busy = false; setState('idle'); zeigeLeer()
+    agents.clear(); zeichneAgents()
+    liveBubbleEl = null; busy = false; setState('idle')
+    sessionStart = Date.now()
+    zeigeStats({ turns:0, inTok:0, outTok:0, cacheRead:0, cacheWrite:0, costUsd:0 })
+    zeigeAltenVerlauf(r.verlauf, titel)
+    zeigeLeer()
     toast('Session', `Fortgesetzt: ${titel}`, '')
     ladeVerlauf()
   } catch (e) { showError(e, e.code) }
@@ -1230,6 +1386,165 @@ for (const d of document.querySelectorAll('.sgroup')) {
   if (gespeichert !== null) d.open = gespeichert === '1'
   d.addEventListener('toggle', () => localStorage.setItem(key, d.open ? '1' : '0'))
 }
+
+// ── Statusleiste ─────────────────────────────────────────────────────
+// Dauer, Zuege, Token, Fuellstand, Kosten — dieselben Groessen, die Claude
+// Code im Terminal zeigt. Ohne sie merkt man erst an der Fehlermeldung, dass
+// das Kontextfenster voll ist.
+let sessionStart = Date.now()
+
+const zahl = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' M'
+            : n >= 1000 ? (n / 1000).toFixed(1).replace('.', ',') + 'k'
+            : String(n)
+
+function dauerText (ms) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = s % 60
+  const zz = n => String(n).padStart(2, '0')
+  return h ? `${h}:${zz(m)}:${zz(r)}` : `${m}:${zz(r)}`
+}
+
+setInterval(() => { $('#stDauer').textContent = dauerText(Date.now() - sessionStart) }, 1000)
+
+function zeigeStats (st) {
+  $('#stTurns').textContent = st.turns
+  const rein = st.inTok + st.cacheWrite
+  $('#stTok').textContent = st.cacheRead
+    ? `${zahl(rein)} ↑ (${zahl(st.cacheRead)} Cache) ${zahl(st.outTok)} ↓`
+    : `${zahl(rein)} ↑ ${zahl(st.outTok)} ↓`
+  $('#stCost').textContent = st.costUsd
+    ? st.costUsd.toFixed(st.costUsd < 1 ? 3 : 2).replace('.', ',') + ' $' : '–'
+  if (st.ctx) zeigeKontext(st.ctx)
+}
+
+function zeigeKontext (c) {
+  const pct = Math.max(0, Math.min(100, c.prozent ?? (c.tokens / c.max * 100)))
+  $('#stCtxFill').style.width = pct.toFixed(1) + '%'
+  $('#stCtx').textContent = `${pct < 1 ? '<1' : Math.round(pct)} % · ${zahl(c.tokens)}/${zahl(c.max)}`
+  const bar = $('#stCtxBar')
+  bar.classList.toggle('warn', pct >= 66 && pct < 85)
+  bar.classList.toggle('hot', pct >= 85)
+}
+
+// Die volle Aufschluesselung kostet Zaehlaufrufe, deshalb nur auf Klick.
+$('#stCtxBtn').addEventListener('click', async () => {
+  try {
+    const c = await fetch('/api/context?voll=1', { headers: { 'x-voice-token': TOKEN } })
+      .then(r => r.ok ? r.json() : r.json().then(x => Promise.reject(new Error(x.error))))
+    zeigeKontext(c)
+    const top = c.kategorien.sort((a, b) => b.tokens - a.tokens).slice(0, 6)
+      .map(k => `${k.name}: ${zahl(k.tokens)}`).join(' · ')
+    toast('Kontext', `${Math.round(c.prozent)} % von ${zahl(c.max)} — ${top || 'keine Aufschlüsselung'}`, '')
+  } catch (e) { showError(e) }
+})
+
+// ── Unteragenten ─────────────────────────────────────────────────────
+const agBox = $('#agents')
+const agents = new Map()
+
+function zeichneAgents () {
+  agBox.innerHTML = ''
+  const laufend = [...agents.values()].filter(a => !a.fertig).length
+  const b = $('#agcount')
+  b.textContent = laufend || agents.size
+  b.classList.toggle('an', laufend > 0)
+  if (!agents.size) {
+    agBox.append(Object.assign(document.createElement('div'),
+      { className: 'none', textContent: 'Keine Unteragenten in dieser Session.' }))
+    // Zugeklappt haelt die Leiste ruhig, solange nichts laeuft.
+    return
+  }
+  for (const a of agents.values()) {
+    const el = document.createElement('div')
+    el.className = 'ag' + (a.fertig ? (a.ok === false ? ' schief' : ' fertig') : '')
+    const h = document.createElement('div'); h.className = 'h'
+    const pip = document.createElement('span'); pip.className = 'pip'
+    const nm = document.createElement('span'); nm.textContent = a.typ
+    const zt = document.createElement('span'); zt.className = 'badge'
+    zt.textContent = dauerText((a.ende || Date.now()) - a.start)
+    h.append(pip, nm, zt)
+    const d = document.createElement('div'); d.className = 'd'; d.textContent = a.desc
+    el.append(h, d)
+    if (a.wz) {
+      const w = document.createElement('div'); w.className = 'w'
+      w.textContent = a.fertig ? (a.ok === false ? 'fehlgeschlagen' : 'fertig') : '· ' + a.wz
+      el.append(w)
+    }
+    agBox.append(el)
+  }
+}
+
+function onSubagent (d) {
+  if (d.phase === 'start') {
+    agents.set(d.id, { typ: d.typ, desc: d.desc, start: Date.now(), wz: '', fertig: false })
+    $('#grp-agents').open = true       // beim ersten Unteragenten aufklappen
+  } else if (d.phase === 'done') {
+    const a = agents.get(d.id); if (!a) return
+    a.fertig = true; a.ok = d.ok; a.ende = Date.now()
+  } else if (d.phase === 'text') {
+    const a = agents.get(d.id); if (!a) return
+    a.wz = d.text.replace(/\s+/g, ' ').slice(0, 90)
+  }
+  zeichneAgents()
+}
+setInterval(() => { if ([...agents.values()].some(a => !a.fertig)) zeichneAgents() }, 1000)
+zeichneAgents()
+
+// ── MCP-Server ───────────────────────────────────────────────────────
+// Welche Server haengen an dieser Session und antworten sie ueberhaupt? Ohne
+// die Liste merkt man einen toten Server erst am fehlgeschlagenen Werkzeug.
+const ZUSTAND = { connected:['an','verbunden'], failed:['aus','fehlgeschlagen'],
+                  'needs-auth':['warte','Anmeldung nötig'], pending:['warte','verbindet'],
+                  disabled:['','abgeschaltet'] }
+
+async function ladeMcp () {
+  const box = $('#mcps')
+  try {
+    const r = await fetch('/api/mcp', { headers: { 'x-voice-token': TOKEN } })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.error || 'nicht lesbar')
+    box.innerHTML = ''
+    $('#mcpcount').textContent = d.server.length
+    if (!d.server.length) {
+      box.append(Object.assign(document.createElement('div'),
+        { className:'none', textContent:'Keine MCP-Server in dieser Session.' }))
+      return
+    }
+    for (const m of d.server) {
+      const [klasse, wort] = ZUSTAND[m.status] || ['', m.status]
+      const el = document.createElement('div')
+      el.className = 'mcp ' + klasse
+      el.title = `${m.status}${m.scope ? ' · ' + m.scope : ''}${m.fehler ? ' · ' + m.fehler : ''}` +
+                 (m.werkzeuge.length ? '\n' + m.werkzeuge.join(', ') : '')
+      const pip = document.createElement('span'); pip.className = 'pip'
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = m.name
+      const c = document.createElement('span'); c.className = 'c'
+      c.textContent = m.werkzeuge.length ? m.werkzeuge.length + ' Werkzeuge' : wort
+      el.append(pip, n, c)
+      box.append(el)
+    }
+  } catch (e) {
+    box.innerHTML = ''
+    box.append(Object.assign(document.createElement('div'),
+      { className:'none', textContent:'MCP-Status nicht abrufbar: ' + e.message }))
+  }
+}
+// Beim Aufklappen laden, nicht beim Start — der Aufruf kostet eine Runde.
+$('#grp-mcp').addEventListener('toggle', () => { if ($('#grp-mcp').open) ladeMcp() })
+
+// ── Schalter fuer den Verlauf ────────────────────────────────────────
+function schalter (id, attr, standard) {
+  const el = $(id), key = 'claude-voice-' + id.slice(1)
+  const an = (localStorage.getItem(key) ?? (standard ? '1' : '0')) === '1'
+  el.checked = an
+  document.body.dataset[attr] = an ? 'an' : 'aus'
+  el.addEventListener('change', () => {
+    document.body.dataset[attr] = el.checked ? 'an' : 'aus'
+    localStorage.setItem(key, el.checked ? '1' : '0')
+  })
+}
+schalter('#showwz', 'wz', true)
+schalter('#wrapwz', 'wrapwz', false)
 
 // ── Aktivitätsspur ───────────────────────────────────────────────────
 // Eine lange Antwort mit Werkzeugaufrufen sieht sonst nach Stillstand aus.
@@ -1245,7 +1560,8 @@ $('#acttoggle').addEventListener('click', () => {
 // Für die häufigen Werkzeuge das eine Feld zeigen, auf das es ankommt —
 // das ganze Eingabeobjekt wäre hier nur Rauschen.
 const ARG = { Bash:'command', Read:'file_path', Write:'file_path', Edit:'file_path',
-              Glob:'pattern', Grep:'pattern', WebFetch:'url', Task:'description' }
+              Glob:'pattern', Grep:'pattern', WebFetch:'url',
+              Task:'description', Agent:'description' }
 
 function actLine (name, arg, bad) {
   const row = document.createElement('div')
@@ -1253,8 +1569,10 @@ function actLine (name, arg, bad) {
   const n = document.createElement('span'); n.className = 'nm'; n.textContent = name
   const a = document.createElement('span'); a.className = 'arg'; a.textContent = arg
   row.append(n, a)
-  act.append(row)
-  act.scrollTop = act.scrollHeight
+  row.addEventListener('click', () => row.classList.toggle('auf'))
+  row.title = 'Klick klappt die ganze Zeile auf'
+  act.prepend(row)
+  act.scrollTop = 0
   return row
 }
 
@@ -1270,17 +1588,29 @@ function onThink (text) {
   stepShow(zeile.length > 96 ? '…' + zeile.slice(-96) : zeile)
   if (!thinkRow) { thinkRow = actLine('denkt', ''); thinkRow.classList.add('dim') }
   thinkRow.querySelector('.arg').textContent = thinkBuf.slice(-400)
-  act.scrollTop = act.scrollHeight
 }
 
 function thinkReset () { thinkRow = null; thinkBuf = '' }
 
+function argText (name, input) {
+  const key = ARG[name]
+  const raw = key && input?.[key] != null ? String(input[key]) : JSON.stringify(input ?? {})
+  // Nicht mehr kuerzen: die Zeile klippt per CSS und klappt auf Klick auf.
+  return raw.slice(0, 4000)
+}
+
 function onTool (d) {
   thinkReset()
+  // Werkzeuge eines Unteragenten gehoeren an dessen Karte, nicht in die
+  // Hauptspur — sonst mischen sich zwei Erzaehlstraenge.
+  if (d.parent) {
+    const a = agents.get(d.parent)
+    if (a && d.phase === 'use') { a.wz = stepLabel(d.name, d.input); zeichneAgents() }
+    if (d.phase === 'use') actLine('↳ ' + d.name, argText(d.name, d.input)).classList.add('dim')
+    return
+  }
   if (d.phase === 'use') {
-    const key = ARG[d.name]
-    const raw = key && d.input?.[key] != null ? String(d.input[key]) : JSON.stringify(d.input ?? {})
-    actRows.set(d.id, actLine(d.name, raw.replace(/\s+/g, ' ').slice(0, 160)))
+    actRows.set(d.id, actLine(d.name, argText(d.name, d.input)))
     stepShow(stepLabel(d.name, d.input))
   } else {
     const row = actRows.get(d.id); actRows.delete(d.id)
@@ -1288,10 +1618,9 @@ function onTool (d) {
     if (!d.ok) row.classList.add('bad')
     const r = document.createElement('span')
     r.className = 'res'
-    r.textContent = d.ok ? (d.text ? '· ' + d.text.replace(/\s+/g, ' ').slice(0, 70) : '· ok') : '· fehlgeschlagen'
+    r.textContent = d.ok ? (d.text ? '· ' + d.text : '· ok') : '· fehlgeschlagen'
     row.append(r)
     if (busy) stepShow('Denkt weiter…')
-    act.scrollTop = act.scrollHeight
   }
 }
 
@@ -1330,6 +1659,9 @@ function setPermUI (mode) {
   const sel = $('#perm')
   if ([...sel.options].some(o => o.value === mode)) sel.value = mode
   sel.classList.toggle('risky', sel.value === 'bypassPermissions')
+  const knopf = $('#stMode')
+  knopf.textContent = sel.options[sel.selectedIndex]?.text || mode
+  knopf.style.color = sel.value === 'bypassPermissions' ? 'var(--err)' : ''
 }
 
 $('#model').addEventListener('change', async e => {
@@ -1365,13 +1697,24 @@ $('#lang').addEventListener('change', async e => {
   } catch (err) { showError(err, err.code) }
 })
 
+// Der Knopf in der Statusleiste und Umschalt+Tab teilen sich denselben Weg
+// wie das Auswahlmenue — sonst laufen drei Anzeigen auseinander.
+function modusWeiter (rueckwaerts) {
+  const sel = $('#perm')
+  const n = sel.options.length
+  sel.selectedIndex = (sel.selectedIndex + (rueckwaerts ? -1 : 1) + n) % n
+  sel.dispatchEvent(new Event('change', { bubbles: true }))
+}
+$('#stMode').addEventListener('click', () => modusWeiter())
+
 $('#perm').addEventListener('change', async e => {
   const mode = e.target.value
   try {
     const r = await post('/api/permission-mode', JSON.stringify({ mode }), 'application/json')
     setPermUI(mode)
     toast('Modus', `Werkzeuge: ${PERM[mode]}` +
-        (r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
+        (r.restarted ? '. Session neu gestartet — dieser Modus geht nur beim Start.'
+         : r.applied ? '' : '. Gilt ab der nächsten Session.'), '')
   } catch (err) { showError(err, err.code) }
 })
 
@@ -1429,6 +1772,8 @@ es.addEventListener('error', e => {
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
 es.addEventListener('think', e => onThink(JSON.parse(e.data).text))
+es.addEventListener('stats', e => zeigeStats(JSON.parse(e.data)))
+es.addEventListener('subagent', e => onSubagent(JSON.parse(e.data)))
 // Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
 es.addEventListener('step', e => {
   const { name } = JSON.parse(e.data)

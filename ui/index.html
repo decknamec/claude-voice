@@ -58,9 +58,12 @@ body{
 
 header{
   position:relative; z-index:1; width:100%; max-width:760px;
-  display:flex; align-items:center; gap:10px;
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px;
   padding:20px 24px; font-size:12.5px; color:var(--fg-dim);
 }
+/* Der Titel bricht nicht um; wird es eng, wandern die Chips in Zeile zwei. */
+header b{white-space:nowrap;flex:none}
+#cwd{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
      transition:background var(--t-std) var(--e)}
 header b{color:var(--fg);font-weight:600}
@@ -258,6 +261,7 @@ body[data-state="error"] .orb{animation:shake .38s ease-in-out}
   <span class="sp"></span>
   <select class="chip sel" id="backend" title="Sprachausgabe"></select>
   <select class="chip sel" id="voice" title="Stimme"></select>
+  <span class="chip" id="cwd" title="Arbeitsverzeichnis der Session">…</span>
   <span class="chip" id="cfg" title="Modell · Berechtigungen">…</span>
   <button class="chip" id="reset" title="Neue Session beginnen">Neue Session</button>
   <button class="chip" id="acttoggle" title="Zeigt, welche Werkzeuge die Session benutzt">Aktivität</button>
@@ -726,8 +730,11 @@ $('#voice').addEventListener('change', e => { pick.voice = e.target.value; remem
 
 fetch('/api/config', { headers:{ 'x-voice-token':TOKEN } }).then(r => r.json()).then(c => {
   const home = c.cwd && c.cwd.match(/^\/Users\/[^/]+/)?.[0]
-  $('#cwd').textContent = home ? c.cwd.replace(home, '~') : (c.cwd || '?')
-  $('#cwd').title = c.cwd || ''
+  const cwdEl = $('#cwd')
+  if (cwdEl) {
+    cwdEl.textContent = home ? c.cwd.replace(home, '~') : (c.cwd || '?')
+    cwdEl.title = c.cwd || ''
+  }
   $('#cfg').textContent = `${prettyModel(c.model)} · ${PERM[c.permissionMode] || c.permissionMode}`
   $('#cfg').title = `${c.model || 'aus deiner Konfiguration'} · ${c.permissionMode}`
 }).catch(() => {})

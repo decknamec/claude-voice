@@ -30,6 +30,11 @@ const ORIGIN = `http://127.0.0.1:${PORT}`
 function loadConf () {
   const conf = {
     MODEL: join(HOME, '.claude/whisper-models/ggml-large-v3-turbo-q5_0.bin'),
+    // Ohne das wird aus "Stop Hook" gern "Stopthook". Die CLI-Schleife spannt
+    // Whisper laengst so vor, der UI-Pfad tat es bisher nicht.
+    VOCAB: 'Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, '
+         + 'Vercel, TypeScript, Deploy, Terminal, Debugging, Refactoring, Prompt, '
+         + 'Skill, Subagent, Transcript, MCP, Token, Kontextfenster.',
     WHISPER_LANG: 'de',
     VOICE: 'Anna',
     MAX_CHARS: '900',
@@ -171,6 +176,8 @@ async function transcribe (buf, conf) {
     form.append('file', new Blob([buf]), 'in.webm')
     form.append('language', WHISPER_LANG[lang] || conf.WHISPER_LANG)
     form.append('response_format', 'text')
+    const vok = vokabular ?? conf.VOCAB
+    if (vok) form.append('prompt', vok)
     const r = await fetch(`http://127.0.0.1:${whisper.port}/inference`, { method: 'POST', body: form })
     if (r.ok) {
       const text = (await r.text()).replace(/\n/g, ' ').trim()
@@ -184,7 +191,10 @@ async function transcribe (buf, conf) {
     await writeFile(webm, buf)
     const ff = await run('ffmpeg', ['-v', 'error', '-i', webm, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-y', wav])
     if (ff.code !== 0) throw new VoiceError('ffmpeg_failed', ff.err.trim().split('\n').pop() || 'unbekannt')
-    const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', WHISPER_LANG[lang] || conf.WHISPER_LANG, '-nt', '-np', '-t', '8', '-f', wav])
+    const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', WHISPER_LANG[lang] || conf.WHISPER_LANG,
+      '-nt', '-np', '-t', '8',
+      ...((vokabular ?? conf.VOCAB) ? ['--prompt', vokabular ?? conf.VOCAB, '--carry-initial-prompt'] : []),
+      '-f', wav])
     if (w.code !== 0) throw new VoiceError('whisper_failed', w.err.trim().split('\n').pop() || 'unbekannt')
     const text = w.out.replace(/\n/g, ' ').trim()
     return JUNK.test(text) ? '' : text
@@ -274,6 +284,7 @@ let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
 let modelOverride = null
 let lang = 'de'
 let effort = null   // null = wie vom Modell vorgegeben
+let vokabular = null       // null = der Vorgabewert aus der Konfig
 let stil = 'standard'      // wie Claude antwortet
 let stilText = ''          // frei formulierter Stil, wenn stil === 'eigen'
 
@@ -295,9 +306,28 @@ const stilPrompt = () => stil === 'eigen' ? stilText.slice(0, 800) : (STILE[stil
 // Session gleich an die Grenze laeuft.
 const leereStats = () => ({
   turns: 0, inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0,
-  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null, zweig: ''
+  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null, zweig: '',
+  limits: null, modelle: {}
 })
 let stats = leereStats()
+
+// Die Plangrenzen kosten einen Kontrollaufruf. Einmal pro Minute reicht:
+// die Fenster bewegen sich in Prozentpunkten, nicht in Sekunden.
+let limitCache = { wann: 0, wert: null }
+async function planGrenzen (frisch) {
+  if (!S) return null
+  if (!frisch && Date.now() - limitCache.wann < 60000) return limitCache.wert
+  try {
+    const u = await S.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
+    const f = u?.rate_limits || {}
+    const eins = x => x && x.utilization != null ? { pct: x.utilization, bis: x.resets_at || null } : null
+    limitCache = { wann: Date.now(), wert: u?.rate_limits_available
+      ? { abo: u.subscription_type || null, fuenfH: eins(f.five_hour), siebenT: eins(f.seven_day),
+          opus: eins(f.seven_day_opus), sonnet: eins(f.seven_day_sonnet) }
+      : null }
+  } catch { limitCache = { wann: Date.now(), wert: null } }
+  return limitCache.wert
+}
 
 function summeUsage (u) {
   if (!u) return
@@ -326,6 +356,17 @@ function startSession (conf, resumeId) {
   }
 
   const pending = new Map()   // Freigabe-Anfragen, auf die die UI antworten muss
+  // Dauerhafte Freigaben fuer diese Session: sonst wird man bei jedem
+  // einzelnen Bash-Aufruf neu gefragt, und man schaltet aus Verzweiflung auf
+  // "ohne jede Rueckfrage" — genau das Gegenteil von dem, was man will.
+  const dauerhaft = { werkzeuge: new Set(), genau: new Set() }
+  // Der Schluessel fuer "genau diesen Aufruf": Werkzeug plus das eine Feld,
+  // auf das es ankommt. Ein voller Objektvergleich traefe fast nie.
+  const genauKey = (name, input) => {
+    const feld = { Bash:'command', Read:'file_path', Write:'file_path', Edit:'file_path',
+                   Glob:'pattern', Grep:'pattern', WebFetch:'url' }[name]
+    return name + '\u0000' + (feld && input?.[feld] != null ? String(input[feld]) : JSON.stringify(input ?? {}))
+  }
   const subagents = new Set()  // laufende Task-Aufrufe, fuer die Uebersicht
 
   const q = query({
@@ -347,6 +388,10 @@ function startSession (conf, resumeId) {
       // Hier hängt die ganze Freigabe-Mechanik dran: das Promise bleibt offen,
       // bis der Nutzer in der UI entschieden hat.
       canUseTool: (toolName, toolInput, { signal }) => new Promise(resolve => {
+        if (dauerhaft.werkzeuge.has(toolName) || dauerhaft.genau.has(genauKey(toolName, toolInput))) {
+          push('tool-auto', { tool: toolName })
+          return resolve({ behavior: 'allow' })
+        }
         const id = randomUUID()
         pending.set(id, resolve)
         push('permission', { id, tool: toolName, input: toolInput })
@@ -358,7 +403,7 @@ function startSession (conf, resumeId) {
   })
 
   S = {
-    q, pending, subagents,
+    q, pending, subagents, dauerhaft, genauKey,
     send (text) {
       inbox.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
       if (wake) { wake(); wake = null }
@@ -427,12 +472,21 @@ function startSession (conf, resumeId) {
           stats.lastMs = msg.duration_ms || 0
           stats.apiMs += msg.duration_api_ms || 0
           stats.costUsd += msg.total_cost_usd || 0
+          // Aufschluesselung je Modell: bei gemischten Zuegen sieht man sonst
+          // nicht, wo das Geld hingeht.
+          for (const [name, u] of Object.entries(msg.modelUsage || {})) {
+            const m = stats.modelle[name] || (stats.modelle[name] = { ein: 0, aus: 0, kosten: 0 })
+            m.ein += (u.inputTokens || 0) + (u.cacheReadInputTokens || 0)
+            m.aus += u.outputTokens || 0
+            m.kosten += u.costUSD || 0
+          }
           summeUsage(msg.usage)
           stats.zweig = gitZweig()
           push('done', { subtype: msg.subtype, ms: msg.duration_ms })
           push('stats', stats)
           // Der Fuellstand kostet einen Kontrollaufruf, deshalb erst nach dem
           // Zug und in der billigen Variante.
+          planGrenzen().then(l => { stats.limits = l; push('stats', stats) }).catch(() => {})
           q.getContextUsage({ detail: 'summary' })
             .then(c => {
               stats.ctx = { tokens: c.totalTokens, max: c.maxTokens || c.rawMaxTokens,
@@ -686,7 +740,7 @@ const server = createServer(async (req, res) => {
         verbrauch: {
           zuege: stats.turns, ein: stats.inTok, aus: stats.outTok,
           cache: stats.cacheRead, kosten: stats.costUsd,
-          kontext: stats.ctx
+          kontext: stats.ctx, modelle: stats.modelle
         },
         spracherkennung: {
           modell: conf.MODEL,
@@ -737,6 +791,29 @@ const server = createServer(async (req, res) => {
           }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/models') {
+      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      try {
+        const liste = await S.q.supportedModels()
+        return json(res, 200, {
+          modelle: liste.map(m => ({
+            id: m.value, name: m.displayName, beschreibung: m.description || '',
+            denktiefen: m.supportsEffort ? (m.supportedEffortLevels || []) : []
+          }))
+        })
+      } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
+    }
+
+    // Vokabular, mit dem Whisper vorgespannt wird.
+    if (req.method === 'GET' && url.pathname === '/api/vocab') {
+      return json(res, 200, { vokabular: vokabular ?? conf.VOCAB })
+    }
+    if (req.method === 'POST' && url.pathname === '/api/vocab') {
+      const { text } = JSON.parse((await body(req)).toString('utf8'))
+      vokabular = String(text ?? '').slice(0, 1200)
+      return json(res, 200, { ok: true, vokabular })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/commands') {
@@ -825,13 +902,32 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission') {
-      const { id, behavior, message } = JSON.parse((await body(req)).toString('utf8'))
+      const { id, behavior, message, umfang, tool, input } = JSON.parse((await body(req)).toString('utf8'))
       const resolve = S?.pending.get(id)
       if (!resolve) return json(res, 404, { error: 'unbekannte Anfrage' })
       S.pending.delete(id)
+      // Der Umfang gilt nur fuer diese Session. Etwas dauerhaft auf die Platte
+      // zu schreiben waere eine Entscheidung mit laengerer Reichweite, als ein
+      // Klick in einem Sprachfenster tragen sollte.
+      if (behavior === 'allow' && umfang === 'werkzeug' && tool) S.dauerhaft.werkzeuge.add(tool)
+      if (behavior === 'allow' && umfang === 'genau' && tool) S.dauerhaft.genau.add(S.genauKey(tool, input))
       resolve(behavior === 'allow'
         ? { behavior: 'allow' }
         : { behavior: 'deny', message: message || 'Vom Nutzer abgelehnt.' })
+      return json(res, 200, { ok: true,
+        regeln: { werkzeuge: [...S.dauerhaft.werkzeuge], genau: S.dauerhaft.genau.size } })
+    }
+
+    // Freigaberegeln ansehen und zuruecknehmen.
+    if (req.method === 'GET' && url.pathname === '/api/permission-rules') {
+      if (!S) return json(res, 200, { werkzeuge: [], genau: [] })
+      return json(res, 200, {
+        werkzeuge: [...S.dauerhaft.werkzeuge],
+        genau: [...S.dauerhaft.genau].map(k => k.split('\u0000'))
+      })
+    }
+    if (req.method === 'POST' && url.pathname === '/api/permission-rules') {
+      if (S) { S.dauerhaft.werkzeuge.clear(); S.dauerhaft.genau.clear() }
       return json(res, 200, { ok: true })
     }
 

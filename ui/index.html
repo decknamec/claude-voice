@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Voice</title>
+<link rel="icon" href="data:image/svg+xml,<svg%20xmlns="http://www.w3.org/2000/svg"%20viewBox="0%200%2064%2064"><rect%20width="64"%20height="64"%20rx="15"%20fill="#6c6cf0"/><g%20fill="none"%20stroke="#fff"%20stroke-width="4.2"%20stroke-linecap="round"><rect%20x="25"%20y="16"%20width="14"%20height="21"%20rx="7"%20fill="#fff"%20stroke="none"/><path%20d="M19%2032v2a13%2013%200%200%200%2026%200v-2M32%2047v6"/></g></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg%20xmlns="http://www.w3.org/2000/svg"%20viewBox="0%200%2064%2064"><rect%20width="64"%20height="64"%20rx="15"%20fill="#6c6cf0"/><g%20fill="none"%20stroke="#fff"%20stroke-width="4.2"%20stroke-linecap="round"><rect%20x="25"%20y="16"%20width="14"%20height="21"%20rx="7"%20fill="#fff"%20stroke="none"/><path%20d="M19%2032v2a13%2013%200%200%200%2026%200v-2M32%2047v6"/></g></svg>">
+<meta name="theme-color" content="#fbfaf9" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0d0c0f" media="(prefers-color-scheme:dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Mit Claude Code sprechen: lokale Spracherkennung, Freigaben, Werkzeugspur.">
 <style>
 /* ── Motion-Identität ────────────────────────────────────────────────
    Archetyp Premium: eine Signature-Kurve für ~80 % der Bewegung,
@@ -36,6 +42,10 @@
 }
 
 *{box-sizing:border-box}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+/* Ein Symbol, eine Groesse, eine Strichstaerke — gemischte Icon-Familien
+   lesen sich wie ein Versehen. */
+.ic{width:13px;height:13px;flex:none;fill:currentColor;opacity:.62}
 /* Ein eigenes display in einer Klassenregel schlägt die eingebaute
    [hidden]-Regel des Browsers. Einmal global klarstellen. */
 [hidden]{display:none !important}
@@ -160,10 +170,10 @@ header .sp{flex:1}
 }
 .ctx .sp2{color:var(--line)}
 .chip.icon{display:grid;place-items:center;padding:0;width:30px;height:30px;flex:none}
-.chip.icon svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4}
-/* Der Balken im Symbol wandert mit: gefüllt heißt offen, leer heißt zu. */
-.chip.icon svg line{transition:transform var(--t-std) var(--e);transform-origin:center}
-body[data-side="off"] .chip.icon svg line{transform:translateX(-4.5px);opacity:.45}
+.chip.icon .ic{width:15px;height:15px;opacity:1}
+/* Eingeklappt kippt das Symbol, damit der Zustand am Knopf ablesbar bleibt. */
+.chip.icon .ic{transition:transform var(--t-std) var(--e)}
+body[data-side="off"] .chip.icon .ic{transform:scaleX(-1);opacity:.7}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
      transition:background var(--t-std) var(--e)}
 header b{color:var(--fg);font-weight:600}
@@ -273,21 +283,30 @@ body[data-state="transcribing"] .orb::after{opacity:1;animation:sweep 1.1s var(-
 /* Statusleiste unten, wie die Statuszeile im Terminal: alles, was man im Blick
    behalten will, ohne dass es den Gespraechsverlauf zerschneidet. */
 .status{
-  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  padding:8px 22px; border-top:1px solid var(--line); background:var(--panel);
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:0 18px; min-height:38px;
+  border-top:1px solid var(--line); background:var(--panel);
   font-size:11.5px; color:var(--fg-dim); font-variant-numeric:tabular-nums;
+  /* Ziffern in gleicher Breite, damit die Werte beim Hochzählen nicht wackeln. */
+  letter-spacing:.01em;
 }
-.status .si{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.status .si{display:flex;align-items:center;gap:6px;white-space:nowrap;height:26px}
 .status b{color:var(--fg);font-weight:500}
+/* Haarlinien statt bloßer Abstände: bei acht Werten nebeneinander sieht man
+   sonst nicht, was zusammengehört. */
+.teiler{width:1px;height:15px;background:var(--line);flex:none;margin:0 2px}
 button.si{
-  background:none; border:0; padding:3px 7px; margin:-3px -7px; border-radius:7px;
+  background:none; border:0; padding:0 8px; border-radius:var(--r-field);
   color:inherit; font:inherit; cursor:pointer;
-  transition:background var(--t-fast) var(--e);
+  transition:background var(--t-quick) var(--e), color var(--t-quick) var(--e);
 }
-button.si:hover{background:rgba(127,127,127,.14)}
+button.si:hover{background:var(--accent-soft);color:var(--fg)}
+button.si:hover .ic{opacity:.9}
 button.si:active{transform:translateY(1px)}
-button.si:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.ctxbar{width:52px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;flex:none}
+button.si:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+button.si[aria-expanded="true"]{background:var(--accent-soft);color:var(--fg)}
+.status .mode{margin-left:auto}
+.ctxbar{width:44px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;flex:none}
 .ctxbar i{display:block;height:100%;width:0;border-radius:3px;background:var(--accent);
           transition:width var(--t-std) var(--e), background var(--t-std) var(--e)}
 /* Ab zwei Dritteln wird es knapp — das soll auffallen, bevor es kippt. */
@@ -426,8 +445,41 @@ body[data-wz="aus"] .msg.wz{display:none}
 .mini.danger{color:var(--err)}
 .mini[aria-busy="true"]{opacity:.5;pointer-events:none}
 
-.zw{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.5;
-    stroke-linecap:round;flex:none;opacity:.75}
+/* Plangrenzen: schmaler Balken plus Zahl. Ab drei Vierteln faerbt er sich,
+   damit man das Limit sieht, bevor man hineinlaeuft. */
+.lim{gap:6px}
+.limbar{width:34px;height:4px;border-radius:2px;background:var(--line);overflow:hidden;flex:none}
+.limbar i{display:block;height:100%;width:0;border-radius:2px;background:var(--fg-dim);
+          transition:width var(--t-std) var(--e),background var(--t-std) var(--e)}
+.limbar.warn i{background:#d9a441}
+.limbar.hot i{background:var(--err)}
+
+/* Tippen als Rettungsanker: wenn Whisper einen Dateinamen verhoert, muss man
+   ihn nicht dreimal sprechen. */
+.tippen{display:flex;gap:8px;margin-top:14px;width:min(560px,86vw)}
+.tippen input{
+  flex:1;min-width:0;font:inherit;font-size:13.5px;color:var(--fg);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:9px 16px;transition:border-color var(--t-quick) var(--e);
+}
+.tippen input::placeholder{color:var(--fg-dim);opacity:.7}
+.tippen input:focus{outline:none;border-color:var(--accent)}
+.tippen .chip{flex:none}
+body[data-state="listening"] .tippen{opacity:.4;pointer-events:none}
+
+/* Freigaben: der Umfang steht als zweite Knopfreihe darunter, damit der
+   einfache Fall ein Klick bleibt. */
+.perm .umfang{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;
+              border-top:1px solid var(--line);padding-top:8px}
+.perm .umfang .mini{white-space:nowrap}
+
+/* Diff: was eine Aenderung wirklich tut. Ohne das sieht man nur den Dateinamen. */
+.diff{margin-top:5px;border-radius:var(--r-field);overflow:hidden;font-size:11px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.5}
+.diff div{padding:1px 8px;white-space:pre-wrap;word-break:break-word}
+.diff .raus{background:color-mix(in srgb,var(--err) 14%,transparent);color:var(--err)}
+.diff .rein{background:color-mix(in srgb,#3fb27f 16%,transparent);color:#3fb27f}
+
 
 .agents{display:flex;flex-direction:column;gap:8px}
 .agents .none{font-size:11.5px;color:var(--fg-dim);opacity:.7}
@@ -717,6 +769,22 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
 </style>
 </head>
 <body data-state="idle">
+<!-- Phosphor Icons (MIT), aus @phosphor-icons/core 2.1.1 in die Datei
+     uebernommen. Kein Laufzeit-Code, keine Abfrage nach draussen: die
+     Seite haelt das Sitzungs-Token, da gehoert kein fremdes Skript hinein. -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-git-branch" viewBox="0 0 256 256"><path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></symbol>
+  <symbol id="i-chats-circle" viewBox="0 0 256 256"><path d="M232.07,186.76a80,80,0,0,0-62.5-114.17A80,80,0,1,0,23.93,138.76l-7.27,24.71a16,16,0,0,0,19.87,19.87l24.71-7.27a80.39,80.39,0,0,0,25.18,7.35,80,80,0,0,0,108.34,40.65l24.71,7.27a16,16,0,0,0,19.87-19.86ZM62,159.5a8.28,8.28,0,0,0-2.26.32L32,168l8.17-27.76a8,8,0,0,0-.63-6,64,64,0,1,1,26.26,26.26A8,8,0,0,0,62,159.5Zm153.79,28.73L224,216l-27.76-8.17a8,8,0,0,0-6,.63,64.05,64.05,0,0,1-85.87-24.88A79.93,79.93,0,0,0,174.7,89.71a64,64,0,0,1,41.75,92.48A8,8,0,0,0,215.82,188.23Z"/></symbol>
+  <symbol id="i-arrows-down-up" viewBox="0 0 256 256"><path d="M117.66,170.34a8,8,0,0,1,0,11.32l-32,32a8,8,0,0,1-11.32,0l-32-32a8,8,0,0,1,11.32-11.32L72,188.69V48a8,8,0,0,1,16,0V188.69l18.34-18.35A8,8,0,0,1,117.66,170.34Zm96-96-32-32a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32L168,67.31V208a8,8,0,0,0,16,0V67.31l18.34,18.35a8,8,0,0,0,11.32-11.32Z"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 256 256"><path d="M207.06,72.67A111.24,111.24,0,0,0,128,40h-.4C66.07,40.21,16,91,16,153.13V176a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V152A111.25,111.25,0,0,0,207.06,72.67ZM224,176H119.71l54.76-75.3a8,8,0,0,0-12.94-9.42L99.92,176H32V153.13c0-3.08.15-6.12.43-9.13H56a8,8,0,0,0,0-16H35.27c10.32-38.86,44-68.24,84.73-71.66V80a8,8,0,0,0,16,0V56.33A96.14,96.14,0,0,1,221,128H200a8,8,0,0,0,0,16h23.67c.21,2.65.33,5.31.33,8Z"/></symbol>
+  <symbol id="i-currency-dollar" viewBox="0 0 256 256"><path d="M152,120H136V56h8a32,32,0,0,1,32,32,8,8,0,0,0,16,0,48.05,48.05,0,0,0-48-48h-8V24a8,8,0,0,0-16,0V40h-8a48,48,0,0,0,0,96h8v64H104a32,32,0,0,1-32-32,8,8,0,0,0-16,0,48.05,48.05,0,0,0,48,48h16v16a8,8,0,0,0,16,0V216h16a48,48,0,0,0,0-96Zm-40,0a32,32,0,0,1,0-64h8v64Zm40,80H136V136h16a32,32,0,0,1,0,64Z"/></symbol>
+  <symbol id="i-hourglass-medium" viewBox="0 0 256 256"><path d="M200,75.64V40a16,16,0,0,0-16-16H72A16,16,0,0,0,56,40V76a16.07,16.07,0,0,0,6.4,12.8L114.67,128,62.4,167.2A16.07,16.07,0,0,0,56,180v36a16,16,0,0,0,16,16H184a16,16,0,0,0,16-16V180.36a16.09,16.09,0,0,0-6.35-12.77L141.27,128l52.38-39.6A16.05,16.05,0,0,0,200,75.64ZM72,40H184V75.64L178.23,80H77.33L72,76Zm56,78L98.67,96h58.4Zm56,98H72V180l48-36v24a8,8,0,0,0,16,0V144.08l48,36.28Z"/></symbol>
+  <symbol id="i-calendar-blank" viewBox="0 0 256 256"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/></symbol>
+  <symbol id="i-shield-check" viewBox="0 0 256 256"><path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z"/></symbol>
+  <symbol id="i-sidebar-simple" viewBox="0 0 256 256"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z"/></symbol>
+  <symbol id="i-microphone" viewBox="0 0 256 256"><path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"/></symbol>
+</svg>
 <div class="ambient"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="keys" id="keys" hidden>
@@ -776,6 +844,9 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
         <label class="check"><input type="checkbox" id="wrapwz">
           <span data-i18n>Befehle vollständig zeigen</span></label>
       </div>
+      <label><span data-i18n>Fachwörter für die Erkennung</span>
+        <textarea id="vokabel" rows="2" data-i18n-ph
+          placeholder="Begriffe, die Whisper sonst verhört — mit Komma getrennt"></textarea></label>
       <label><span data-i18n>Antwortstil</span><select id="stil">
         <option value="standard" data-i18n>wie üblich</option>
         <option value="knapp" data-i18n>knapp</option>
@@ -862,10 +933,7 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
     <header>
       <button class="chip icon" id="sidetoggle" data-i18n-title title="Seitenleiste ein- und ausklappen (S)"
               data-i18n-aria aria-label="Seitenleiste umschalten" aria-expanded="true">
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2.5"/>
-          <line x1="6" y1="2.5" x2="6" y2="13.5"/>
-        </svg>
+<svg class="ic sidebarIc"><use href="#i-sidebar-simple"/></svg>
       </button>
       <span class="ctx">
         <b id="cfg" data-i18n-title title="Laufendes Modell">…</b>
@@ -901,6 +969,11 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
       </div>
       <div class="meter" id="meter"><span></span></div>
       <div class="preview" id="preview"></div>
+      <form class="tippen" id="tippen">
+        <input id="tippfeld" autocomplete="off" spellcheck="false" data-i18n-ph
+               placeholder="…oder tippen, wenn das Mikro dich verhört hat">
+        <button type="submit" class="chip" id="tippsenden" data-i18n>senden</button>
+      </form>
       <div class="hint" id="hint"><span data-i18n>Klick zum Sprechen</span> · <kbd data-i18n>Leertaste</kbd>
         <span data-i18n>halten</span> · <kbd>?</kbd> <span data-i18n>zeigt alle Tasten</span></div>
     </section>
@@ -918,7 +991,7 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
       <div class="gitwrap">
         <button class="si" id="stZweigBox" hidden aria-expanded="false"
                 data-i18n-title title="Git-Zweig · klicken für Wechseln, Holen, Ziehen, Schieben">
-          <svg viewBox="0 0 16 16" class="zw" aria-hidden="true"><path d="M4 2v8m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8-8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4c0 3-3 3-5 4"/></svg>
+          <svg class="ic"><use href="#i-git-branch"/></svg>
           <b id="stZweig"></b><span class="gitzahl" id="stGitZahl"></span></button>
         <div class="gitpop" id="gitpop" hidden>
           <div class="gitkopf"><b id="gitlage"></b></div>
@@ -935,16 +1008,38 @@ body[data-wrapwz="an"] .act .arg{white-space:pre-wrap;overflow:visible}
           <div class="gitmeldung" id="gitmeldung"></div>
         </div>
       </div>
-      <span class="si" data-i18n-title title="Laufzeit dieser Session"><b id="stDauer">0:00</b></span>
-      <span class="si" data-i18n-title title="Abgeschlossene Züge"><b id="stTurns">0</b> <span data-i18n>Züge</span></span>
+
+      <span class="teiler"></span>
+
+      <span class="si" data-i18n-title title="Laufzeit dieser Session">
+        <svg class="ic"><use href="#i-clock"/></svg><b id="stDauer">0:00</b></span>
+      <span class="si" data-i18n-title title="Abgeschlossene Züge">
+        <svg class="ic"><use href="#i-chats-circle"/></svg><b id="stTurns">0</b></span>
       <span class="si" data-i18n-title title="Token: gesendet ↑ / empfangen ↓, in Klammern aus dem Cache gelesen">
-        <b id="stTok">0 ↑ 0 ↓</b></span>
-      <button class="si ctxi" id="stCtxBtn"
+        <svg class="ic"><use href="#i-arrows-down-up"/></svg><b id="stTok">0 ↑ 0 ↓</b></span>
+
+      <span class="teiler"></span>
+
+      <button class="si" id="stCtxBtn"
               data-i18n-title title="Füllstand des Kontextfensters · klicken für die Aufschlüsselung">
+        <svg class="ic"><use href="#i-gauge"/></svg>
         <span class="ctxbar" id="stCtxBar"><i id="stCtxFill"></i></span><b id="stCtx">–</b></button>
-      <span class="si" data-i18n-title title="Kosten laut SDK"><b id="stCost">–</b></span>
-      <span class="sp"></span>
-      <button class="si mode" id="stMode" data-i18n-title title="Werkzeug-Modus · Umschalt+Tab wechselt"><span data-i18n>fragt nach</span></button>
+      <span class="si" data-i18n-title title="Kosten laut SDK">
+        <svg class="ic"><use href="#i-currency-dollar"/></svg><b id="stCost">–</b></span>
+
+      <span class="teiler" id="limTeiler" hidden></span>
+
+      <span class="si lim" id="stLim5Box" hidden
+            data-i18n-title title="Anteil des 5-Stunden-Fensters · Zurücksetzung in Klammern">
+        <svg class="ic"><use href="#i-hourglass-medium"/></svg>
+        <span class="limbar" id="stLim5Bar"><i></i></span><b id="stLim5"></b></span>
+      <span class="si lim" id="stLim7Box" hidden
+            data-i18n-title title="Anteil des 7-Tage-Fensters · Zurücksetzung in Klammern">
+        <svg class="ic"><use href="#i-calendar-blank"/></svg>
+        <span class="limbar" id="stLim7Bar"><i></i></span><b id="stLim7"></b></span>
+
+      <button class="si mode" id="stMode" data-i18n-title title="Werkzeug-Modus · Umschalt+Tab wechselt">
+        <svg class="ic"><use href="#i-shield-check"/></svg><span data-i18n>fragt nach</span></button>
     </footer>
   </main>
 </div>
@@ -964,7 +1059,8 @@ const $ = s => document.querySelector(s)
                   'stZweig','stZweigBox','stil','stileigen','stiltext',
                   'statuslist','statusreload','grp-status','gitpop','gitlage',
                   'gitzweige','gitneu','gitname','gitfetch','gitpull','gitpush',
-                  'gitmeldung','stGitZahl',
+                  'gitmeldung','stGitZahl','limTeiler','stLim5','stLim5Box','stLim5Bar',
+                  'stLim7','stLim7Box','stLim7Bar','tippen','tippfeld','tippsenden',
                   'theme','swatches','fsize','fsizeout','dense','radius','calm',
                   'noglow','mute','rate','rateout',
                   'cfg','cwd','history','reset','livetoggle','acttoggle','stop','quit']
@@ -1069,6 +1165,26 @@ const EN = {
   '. Session neu gestartet, der Stil gilt ab jetzt.':
     '. Started a new session, the style applies from now on.',
   'Status':'Status', 'Arbeit':'Work',
+  '5 h':'5 h', '7 d':'7 d',
+  'Anteil des 5-Stunden-Fensters · Zurücksetzung in Klammern':
+    'Share of the 5-hour window · reset time in brackets',
+  'Anteil des 7-Tage-Fensters · Zurücksetzung in Klammern':
+    'Share of the 7-day window · reset time in brackets',
+  '…oder tippen, wenn das Mikro dich verhört hat':
+    '…or type, when the mic misheard you',
+  'senden':'send', 'getippt':'typed',
+  'Freigabe erforderlich':'Approval needed',
+  'Claude möchte X benutzen.':'Claude wants to use X.',
+  'Erlauben':'Allow', 'Ablehnen':'Deny',
+  'immer: X':'always: X', 'immer genau das':'always exactly this', 'immer X':'always X',
+  'ab jetzt ohne Rückfrage':'no more asking from now on',
+  'dieser Aufruf ab jetzt ohne Rückfrage':'this call no longer asks',
+  'frei':'auto',
+  'Fachwörter für die Erkennung':'Terms for recognition',
+  'Begriffe, die Whisper sonst verhört — mit Komma getrennt':
+    'Terms Whisper otherwise mishears, comma separated',
+  'Fachwörter übernommen':'Terms applied',
+  'Kosten je Modell':'Cost per model',
   'Git-Zweig · klicken für Wechseln, Holen, Ziehen, Schieben':
     'Git branch · click to switch, fetch, pull, push',
   'neuer Zweig':'new branch', 'anlegen':'create', 'holen':'fetch', 'ziehen':'pull',
@@ -1410,7 +1526,7 @@ async function finish () {
 
     // Ab hier übernimmt der Ereignisstrom: Text, Freigaben und das Ende des
     // Turns kommen über SSE, nicht als Antwort auf diesen Aufruf.
-    turnLaeuft = true
+    turnLaeuft = true; zugStart = Date.now()
     setState('thinking')
     await post('/api/say', JSON.stringify({ text: said }), 'application/json')
   } catch (e) {
@@ -1423,13 +1539,33 @@ async function schickeText (text, etikett) {
   busy = true
   try {
     add(t('Du'), text, 'me', etikett || '')
-    turnLaeuft = true
+    turnLaeuft = true; zugStart = Date.now(); zugStart = Date.now()
     setState('thinking')
     await post('/api/say', JSON.stringify({ text }), 'application/json')
   } catch (e) { showError(e, e.code); busy = false }
 }
 
-orb.addEventListener('click', () => state === 'listening' ? stopRec() : start())
+// Einmal fragen, und zwar erst wenn der Nutzer etwas tut — ein Dialog beim
+// Laden wird reflexhaft weggeklickt.
+let notifGefragt = false
+function fragNotif () {
+  if (notifGefragt || !('Notification' in window) || Notification.permission !== 'default') return
+  notifGefragt = true
+  Notification.requestPermission().catch(() => {})
+}
+
+$('#tippen').addEventListener('submit', e => {
+  e.preventDefault()
+  const txt = $('#tippfeld').value.trim()
+  if (!txt) return
+  $('#tippfeld').value = ''
+  schickeText(txt, t('getippt'))
+})
+// Das Feld faengt die Leertaste ab — sonst startet mitten im Wort die Aufnahme.
+// Der Handler prueft schon auf INPUT, hier nur der Vollstaendigkeit halber.
+$('#tippfeld').addEventListener('keydown', e => e.stopPropagation())
+
+orb.addEventListener('click', () => { fragNotif(); state === 'listening' ? stopRec() : start() })
 
 let held = false
 const tippt = e => /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)
@@ -1787,6 +1923,28 @@ function zeigeStats (st) {
   // Nach jedem Zug kann sich der Zweig geaendert haben, etwa weil Claude
   // selbst gewechselt hat.
   if (st.zweig !== undefined) ladeGit()
+  zeigeLimit('#stLim5', st.limits?.fuenfH)
+  zeigeLimit('#stLim7', st.limits?.siebenT)
+  // Der Teiler gehoert nur dorthin, wo rechts davon auch etwas steht.
+  $('#limTeiler').hidden = $('#stLim5Box').hidden && $('#stLim7Box').hidden
+}
+
+// Plangrenze als Balken plus Prozentzahl. Ohne Wert bleibt der Platz leer,
+// statt eine Null zu behaupten, die niemand gemessen hat.
+function zeigeLimit (id, f) {
+  const box = $(id + 'Box')
+  if (!f || f.pct == null) { box.hidden = true; return }
+  box.hidden = false
+  const pct = Math.max(0, Math.min(100, f.pct))
+  const bar = $(id + 'Bar')
+  bar.firstElementChild.style.width = pct.toFixed(0) + '%'
+  bar.classList.toggle('warn', pct >= 75 && pct < 90)
+  bar.classList.toggle('hot', pct >= 90)
+  $(id).textContent = Math.round(pct) + ' %'
+  box.title = t(id.includes('5') ? 'Anteil des 5-Stunden-Fensters · Zurücksetzung in Klammern'
+                                 : 'Anteil des 7-Tage-Fensters · Zurücksetzung in Klammern')
+    + (f.bis ? ' (' + new Date(f.bis).toLocaleString(uiSprache,
+        { weekday:'short', hour:'2-digit', minute:'2-digit' }) + ')' : '')
 }
 
 function zeigeKontext (c) {
@@ -1965,6 +2123,13 @@ async function ladeStatus () {
     zeile('Token aus', zahl(d.verbrauch.aus))
     zeile('Kosten', d.verbrauch.kosten ? d.verbrauch.kosten.toFixed(3).replace('.', ',') + ' $' : '0 $')
     if (k) zeile('Kontext', `${Math.round(k.prozent)} % · ${zahl(k.tokens)}/${zahl(k.max)}`)
+    const je = d.verbrauch.modelle || {}
+    if (Object.keys(je).length > 1) {
+      kopf('Kosten je Modell')
+      for (const [name, m] of Object.entries(je)) {
+        zeile(name.replace(/^claude-/, ''), m.kosten.toFixed(3).replace('.', ',') + ' $')
+      }
+    }
     kopf('Spracherkennung')
     zeile('Modell', d.spracherkennung.modell.split('/').pop(), !d.spracherkennung.vorhanden)
     zeile('Server', t(d.spracherkennung.server), d.spracherkennung.server === 'aus')
@@ -2012,6 +2177,30 @@ $('#statusreload').addEventListener('click', e => {
 })
 
 // ── Slash-Befehle ────────────────────────────────────────────────────
+// Die acht Eintraege im Markup sind eine Momentaufnahme. Sobald eine Session
+// laeuft, ersetzt die Liste des SDK sie — dann veraltet nichts und es steht
+// nur drin, was dieser Zugang wirklich kann.
+let modelleGeladen = false
+async function ladeModelle () {
+  if (modelleGeladen) return
+  try {
+    const d = await fetch('/api/models', { headers: { 'x-voice-token': TOKEN } })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('später')))
+    if (!d.modelle?.length) return
+    modelleGeladen = true
+    const sel = $('#model')
+    const gewaehlt = sel.value
+    sel.innerHTML = ''
+    sel.append(new Option(t('wie konfiguriert'), ''))
+    for (const m of d.modelle) {
+      const o = new Option(m.name, m.id)
+      o.title = m.beschreibung
+      sel.append(o)
+    }
+    sel.value = [...sel.options].some(o => o.value === gewaehlt) ? gewaehlt : ''
+  } catch { /* ohne Session gibt es die Liste nicht — beim naechsten Zug wieder */ }
+}
+
 async function ladeBefehle () {
   const box = $('#cmds')
   try {
@@ -2262,6 +2451,10 @@ $('#acttoggle').addEventListener('click', () => {
 
 // Für die häufigen Werkzeuge das eine Feld zeigen, auf das es ankommt —
 // das ganze Eingabeobjekt wäre hier nur Rauschen.
+const KURZARG = (name, input) => {
+  const f = ARG[name]
+  return f && input?.[f] != null ? String(input[f]).replace(/\s+/g, ' ') : ''
+}
 const ARG = { Bash:'command', Read:'file_path', Write:'file_path', Edit:'file_path',
               Glob:'pattern', Grep:'pattern', WebFetch:'url',
               Task:'description', Agent:'description' }
@@ -2277,6 +2470,22 @@ function actLine (name, arg, bad) {
   act.prepend(row)
   act.scrollTop = 0
   return row
+}
+
+function diffKasten (raus, rein) {
+  const box = document.createElement('div')
+  box.className = 'diff'
+  const zeilen = (txt, klasse, zeichen) => {
+    for (const z of String(txt).split('\n').slice(0, 14)) {
+      const d = document.createElement('div')
+      d.className = klasse
+      d.textContent = zeichen + ' ' + z
+      box.append(d)
+    }
+  }
+  zeilen(raus, 'raus', '-')
+  zeilen(rein, 'rein', '+')
+  return box
 }
 
 const actRows = new Map()
@@ -2314,7 +2523,13 @@ function onTool (d) {
   }
   if (d.name === 'TodoWrite' && d.phase === 'use') zeigeTodos(d.input?.todos)
   if (d.phase === 'use') {
-    actRows.set(d.id, actLine(d.name, argText(d.name, d.input)))
+    const zeile = actLine(d.name, argText(d.name, d.input))
+    // Bei einer Aenderung sagt der Dateiname nichts. Mit bypassPermissions ist
+    // das der groesste blinde Fleck, also die Zeilen direkt zeigen.
+    if (d.name === 'Edit' && d.input?.old_string != null) {
+      zeile.append(diffKasten(d.input.old_string, d.input.new_string ?? ''))
+    }
+    actRows.set(d.id, zeile)
     stepShow(stepLabel(d.name, d.input))
   } else {
     const row = actRows.get(d.id); actRows.delete(d.id)
@@ -2432,6 +2647,16 @@ async function setzeStil (stil, text) {
     toast(t('Antwortstil'), name + (r.restarted ? t('. Session neu gestartet, der Stil gilt ab jetzt.') : ''), '')
   } catch (err) { showError(err, err.code) }
 }
+// Vokabular: erst beim Verlassen des Feldes schicken, nicht bei jedem Zeichen.
+fetch('/api/vocab', { headers: { 'x-voice-token': TOKEN } })
+  .then(r => r.json()).then(d => { $('#vokabel').value = d.vokabular || '' }).catch(() => {})
+$('#vokabel').addEventListener('change', async e => {
+  try {
+    await post('/api/vocab', JSON.stringify({ text: e.target.value }), 'application/json')
+    toast(t('Spracherkennung'), t('Fachwörter übernommen'), '')
+  } catch (err) { showError(err, err.code) }
+})
+
 $('#stil').addEventListener('change', e => setzeStil(e.target.value, $('#stiltext').value))
 // Erst beim Verlassen des Feldes anwenden, sonst startet die Session bei
 // jedem Tastendruck neu.
@@ -2486,12 +2711,24 @@ es.addEventListener('message', e => {
   liveBubbleEl = null
 })
 
+// Der Sinn von freihaendig ist, nebenbei etwas anderes zu tun. Dann sieht man
+// das Ende nicht. Nur melden, wenn das Fenster wirklich weg ist und der Zug
+// lange genug lief, dass man ihn vergessen haben koennte.
+let zugStart = 0
+function melde (text) {
+  if (!document.hidden || Notification?.permission !== 'granted') return
+  if (Date.now() - zugStart < 15000) return
+  try { new Notification('Claude Voice', { body: text.slice(0, 140), tag: 'claude-voice' }) } catch {}
+}
+
 es.addEventListener('done', () => {
   if (liveBubbleEl) { liveBubbleEl.classList.remove('live'); liveBubbleEl = null }
   stepHide(); thinkReset()
   busy = false
   turnLaeuft = false
   neuBewerten()
+  const letzte = log.querySelector('.msg .body')
+  if (letzte) melde(letzte.textContent)
 })
 
 es.addEventListener('error', e => {
@@ -2504,6 +2741,12 @@ es.addEventListener('error', e => {
 
 es.addEventListener('tool', e => onTool(JSON.parse(e.data)))
 es.addEventListener('think', e => onThink(JSON.parse(e.data).text))
+// Eine Regel hat gegriffen — das gehoert in die Spur, sonst wirkt es, als
+// haette die Freigabe nie stattgefunden.
+es.addEventListener('tool-auto', e => {
+  const { tool } = JSON.parse(e.data)
+  actLine(t('frei'), tool).classList.add('dim')
+})
 es.addEventListener('stats', e => {
   zeigeStats(JSON.parse(e.data))
   // Beide Listen brauchen eine laufende Session. Wer die Gruppe vor dem
@@ -2511,6 +2754,7 @@ es.addEventListener('stats', e => {
   if ($('#grp-mcp').open && $('#mcpcount').textContent === '–') ladeMcp()
   if ($('#grp-cmd').open && $('#cmdcount').textContent === '–') ladeBefehle()
   if ($('#grp-status').open) ladeStatus()
+  ladeModelle()
 })
 es.addEventListener('subagent', e => onSubagent(JSON.parse(e.data)))
 // Kommt vor den Argumenten: erst der Name, sobald das Modell ihn festgelegt hat.
@@ -2536,21 +2780,37 @@ es.addEventListener('permission', e => {
   el.className = 'perm'
   el.innerHTML = '<div class="who"></div><div class="body"></div>' +
                  '<pre></pre><div class="row">' +
-                 '<button class="ok">Erlauben</button>' +
-                 '<button class="no">Ablehnen</button></div>'
-  el.querySelector('.who').textContent = 'Freigabe erforderlich'
-  el.querySelector('.body').textContent = `Claude möchte ${tool} benutzen.`
+                 '<button class="ok"></button>' +
+                 '<button class="no"></button></div>' +
+                 '<div class="umfang">' +
+                 '<button class="mini u-genau"></button>' +
+                 '<button class="mini u-werkzeug"></button></div>'
+  el.querySelector('.who').textContent = t('Freigabe erforderlich')
+  el.querySelector('.body').textContent = t('Claude möchte X benutzen.').replace('X', tool)
   el.querySelector('pre').textContent = JSON.stringify(input, null, 2)
-  const answer = behavior => {
+  el.querySelector('.ok').textContent = t('Erlauben')
+  el.querySelector('.no').textContent = t('Ablehnen')
+  // Der einfache Fall bleibt ein Klick; der Umfang steht als zweite Reihe
+  // darunter, damit man nicht bei jedem Bash-Aufruf neu gefragt wird.
+  const kurz = KURZARG(tool, input)
+  el.querySelector('.u-genau').textContent = kurz
+    ? t('immer: X').replace('X', kurz.length > 34 ? kurz.slice(0, 34) + '…' : kurz)
+    : t('immer genau das')
+  el.querySelector('.u-werkzeug').textContent = t('immer X').replace('X', tool)
+  const answer = (behavior, umfang) => {
     el.classList.add('answered')
     el.querySelector('.body').textContent =
-      `${tool}: ${t(behavior === 'allow' ? 'erlaubt' : 'abgelehnt')}`
+      `${tool}: ${t(behavior === 'allow' ? 'erlaubt' : 'abgelehnt')}` +
+      (umfang ? ' · ' + t(umfang === 'werkzeug' ? 'ab jetzt ohne Rückfrage'
+                                                : 'dieser Aufruf ab jetzt ohne Rückfrage') : '')
     setState('thinking')
-    post('/api/permission', JSON.stringify({ id, behavior }), 'application/json')
-      .catch(err => add('Fehler', err.message, 'err'))
+    post('/api/permission', JSON.stringify({ id, behavior, umfang, tool, input }), 'application/json')
+      .catch(err => add(t('Fehler'), err.message, 'err'))
   }
   el.querySelector('.ok').addEventListener('click', () => answer('allow'))
   el.querySelector('.no').addEventListener('click', () => answer('deny'))
+  el.querySelector('.u-genau').addEventListener('click', () => answer('allow', 'genau'))
+  el.querySelector('.u-werkzeug').addEventListener('click', () => answer('allow', 'werkzeug'))
   log.append(el)
   zeigeLeer()
   $('#feed').scrollTo({ top: 0, behavior: 'smooth' })

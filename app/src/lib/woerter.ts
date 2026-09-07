@@ -151,6 +151,17 @@ export const EN: Record<string, string> = {
   'fertig':'done', 'ok':'ok', 'erlaubt':'allowed', 'abgelehnt':'denied',
   'gerade eben':'just now', 'wie das Modell vorgibt':'as the model decides',
   'sehr klein':'very small', 'klein':'small', 'groß':'large', 'sehr groß':'very large',
+  // Beim Umbau auf React entstanden
+  'Standardmodell':'Default model', 'übernehmen':'apply', 'wirklich?':'really?',
+  'von':'of', 'Werkzeugaufrufe':'tool calls',
+  'Beiträge wiederhergestellt. Hier geht es weiter.':'contributions restored. Continue here.',
+  'Kein Transkript gefunden. Das Gedächtnis der Session ist trotzdem da.':
+    'No transcript found. The session still has its memory.',
+  'Noch keine Werkzeuge benutzt.':'No tools used yet.',
+  '. Session neu gestartet, dieser Modus geht nur beim Start.':
+    '. Started a new session, this mode can only be set at launch.',
+  '. Neue Session gestartet, weil das Modell beim Start gesetzt wird.':
+    '. Started a new session, because the model is set at launch.',
   'Indigo':'Indigo', 'Smaragd':'Emerald', 'Bernstein':'Amber', 'Rose':'Rose',
   'Stahl':'Steel', 'Türkis':'Teal'
 }

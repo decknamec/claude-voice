@@ -587,12 +587,21 @@ const server = createServer(async (req, res) => {
     const conf = loadConf()
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      // Der React-Bau hat Vorrang, wenn er da ist. Sonst die handgeschriebene
-      // Fassung — so bleibt die Oberflaeche auch ohne `npm run build` bedienbar.
+      // Die Oberflaeche wird gebaut, nicht ausgeliefert: ein halbes Megabyte
+      // Buendel gehoert nicht in die Versionsverwaltung. claude-voice-ui baut
+      // sie beim Start, wenn sie fehlt oder veraltet ist.
       const gebaut = join(HERE, '..', 'app', 'dist', 'index.html')
-      const html = await readFile(existsSync(gebaut) ? gebaut : join(HERE, 'index.html'))
+      if (!existsSync(gebaut)) {
+        res.writeHead(503, { 'content-type': 'text/html; charset=utf-8' })
+        return res.end('<!doctype html><meta charset="utf-8">'
+          + '<style>body{font:14px/1.6 system-ui;padding:30px;background:#0d0c0f;color:#f2f0ee}'
+          + 'code{color:#8b8bf0}</style>'
+          + '<h3>Die Oberfläche ist noch nicht gebaut.</h3>'
+          + '<p>Einmal <code>cd app &amp;&amp; npm install &amp;&amp; npm run build</code>, '
+          + 'oder <code>claude-voice-ui</code> neu starten — der baut selbst.</p>')
+      }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
-      return res.end(html)
+      return res.end(await readFile(gebaut))
     }
 
     if (url.pathname.startsWith('/api/') && !authorized(req, url)) {

@@ -16,7 +16,7 @@ link() { mkdir -p "$(dirname "$2")"; ln -sfn "$1" "$2"; echo "  $2 -> ${1#$REPO/
 
 if [ "${1:-}" = "--uninstall" ]; then
   for f in bin/claude-say bin/claude-voice bin/claude-voice-ui \
-           voice-ui/server.mjs voice-ui/index.html voice-ui/speakable.mjs \
+           voice-ui/server.mjs voice-ui/speakable.mjs \
            voice-ui/agent-loop.mjs \
            hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh hooks/lib/voicelock.sh hooks/lib/elkey.sh; do
     [ -L "$C/$f" ] && rm -f "$C/$f" && echo "  entfernt: $C/$f"
@@ -50,7 +50,6 @@ link "$REPO/bin/claude-say"          "$C/bin/claude-say"
 link "$REPO/bin/claude-voice"        "$C/bin/claude-voice"
 link "$REPO/bin/claude-voice-ui"     "$C/bin/claude-voice-ui"
 link "$REPO/ui/server.mjs"           "$C/voice-ui/server.mjs"
-link "$REPO/ui/index.html"           "$C/voice-ui/index.html"
 link "$REPO/ui/speakable.mjs"        "$C/voice-ui/speakable.mjs"
 link "$REPO/ui/agent-loop.mjs"       "$C/voice-ui/agent-loop.mjs"
 link "$REPO/hooks/speak-answer.sh"   "$HOOK"

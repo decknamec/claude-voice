@@ -30,7 +30,14 @@ function notifyDesktop (text: string) {
   try { new Notification('Claude Voice', { body: text.slice(0, 140), tag: 'claude-voice' }) } catch { /* ignored */ }
 }
 
-export function markTurnStart () { turnStart = Date.now() }
+/**
+  * Whether anything was read aloud during this turn. Hands-free has no screen
+  * to fall back on, so a turn that ends without a sound is indistinguishable
+  * from one that hung.
+  */
+let spokeThisTurn = false
+
+export function markTurnStart () { turnStart = Date.now(); spokeThisTurn = false }
 
 function liveBubble (): string {
   const s = S()
@@ -174,6 +181,7 @@ export function connect () {
   })
 
   on<{ id: string }>('audio', ({ id }) => {
+    spokeThisTurn = true
     audio.enqueue(id)
     S().set({ speaking: audio.isSpeaking() })
     S().derive()
@@ -198,12 +206,21 @@ export function connect () {
     s.derive()
     const last = [...s.bubbles].reverse().find(b => b.who === 'assistant')
     if (last) notifyDesktop(last.text)
+    // An answer made only of code, or a turn that just ran tools, produces no
+    // speech at all. Say that it finished rather than leaving the room quiet.
+    if (s.handsFree && !spokeThisTurn) {
+      void api.speak(last?.text.trim() ? m.spoken.onScreen : m.spoken.finished)
+    }
   })
 
   on<{ message: string }>('error', ({ message }) => {
     notify(m.toast.error, message, true)
-    S().set({ busy: false, turnRunning: false })
-    S().derive()
+    const s = S()
+    s.set({ busy: false, turnRunning: false })
+    s.derive()
+    // Not the raw message: it is often long, technical and full of paths that
+    // read badly. The same sentence the terminal loop uses.
+    if (s.handsFree) void api.speak(m.spoken.wentWrong)
   })
 
   // A dropped connection arrives without data; EventSource reconnects itself.

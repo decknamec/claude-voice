@@ -227,7 +227,8 @@ than a label that silently stays German.
 - No wake word. Hands-free mode records as soon as it gets loud enough.
 - The thresholds for voice activity detection are estimated, not measured
   against a real voice. Adjustable at runtime via
-  `__voice.tune({ startSec, endSec })`.
+  `__voice.tune({ startSec, endSec })`, with `__voice.session()` to see what
+  the detector decided.
 - The server binds to `127.0.0.1` only and requires a token, because its
   endpoints start Claude with tool access. Do not put it on a network.
 - The DMG is ad-hoc signed, with no Apple certificate. See the Gatekeeper note

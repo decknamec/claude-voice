@@ -113,6 +113,9 @@ export const en: Messages = {
   },
 
   spoken: {
+    onScreen: 'The answer is on screen.',
+    finished: 'Done.',
+    wentWrong: 'Something went wrong.',
     permission: (tool: string) => `Permission for ${tool}?`,
     unclear: 'That was not a clear yes or no.'
   },

@@ -120,6 +120,9 @@ export const de = {
   },
 
   spoken: {
+    onScreen: 'Die Antwort steht im Fenster.',
+    finished: 'Fertig.',
+    wentWrong: 'Da ist etwas schiefgegangen.',
     permission: (tool: string) => `Freigabe für ${tool}?`,
     unclear: 'Das war kein klares Ja oder Nein.'
   },

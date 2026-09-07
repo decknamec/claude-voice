@@ -155,7 +155,8 @@ function GitPopover ({ state }: { state: GitState }) {
 }
 
 export function StatusBar (
-  { mode, onCycleMode }: { mode: PermissionMode; onCycleMode: () => void }
+  { mode, onCycleMode, narrow }:
+  { mode: PermissionMode; onCycleMode: () => void; narrow: boolean }
 ) {
   const { m } = useMessages()
   const stats = useSession(s => s.stats)
@@ -190,22 +191,29 @@ export function StatusBar (
   return (
     <footer className="flex min-h-[38px] items-center gap-[10px] border-t border-line
                        bg-panel px-[18px] text-[11.5px] tabular-nums text-dim">
-      {/* The values wrap, the mode button stays on the right; otherwise it drops
-          to a second line and the bar doubles in height. */}
+      {/* Everything fits on one line while there is room. Below the breakpoint
+          it would wrap and the bar would grow from 38 to 71 pixels, measured,
+          and never shrink back - so the values one glances at least often step
+          aside instead. Runtime, turns and the token split are all in the
+          status panel. */}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-[10px] py-1">
         {git?.repo && <><GitPopover state={git} /><Divider /></>}
 
-        <Value title={m.bar.sessionRuntime} icon={<Clock size={13} />}>
-          {formatDuration(runtime)}
-        </Value>
-        <Value title={m.bar.completedTurns} icon={<ChatsCircle size={13} />}>{stats.turns}</Value>
-        <Value title={m.bar.tokens} icon={<ArrowsDownUp size={13} />}>
-          {stats.cacheRead
-            ? `${formatCount(sent)} ↑ (${formatCount(stats.cacheRead)} cache) ${formatCount(stats.outTok)} ↓`
-            : `${formatCount(sent)} ↑ ${formatCount(stats.outTok)} ↓`}
-        </Value>
+        {!narrow && (
+          <>
+            <Value title={m.bar.sessionRuntime} icon={<Clock size={13} />}>
+              {formatDuration(runtime)}
+            </Value>
+            <Value title={m.bar.completedTurns} icon={<ChatsCircle size={13} />}>{stats.turns}</Value>
+            <Value title={m.bar.tokens} icon={<ArrowsDownUp size={13} />}>
+              {stats.cacheRead
+                ? `${formatCount(sent)} ↑ (${formatCount(stats.cacheRead)} cache) ${formatCount(stats.outTok)} ↓`
+                : `${formatCount(sent)} ↑ ${formatCount(stats.outTok)} ↓`}
+            </Value>
 
-        <Divider />
+            <Divider />
+          </>
+        )}
 
         <button
           title={m.bar.contextFill}

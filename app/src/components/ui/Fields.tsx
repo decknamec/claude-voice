@@ -22,13 +22,24 @@ export function Field ({ label, children }: { label: string; children: ReactNode
 
 export type Choice = { value: string; label: string; title?: string; group?: string }
 
+/**
+ * Radix treats the empty string as "nothing selected", so an item carrying it
+ * leaves the trigger blank however good its label is. Callers use '' for "as
+ * configured", which is a real choice, so swap it for a sentinel on the way in
+ * and back again on the way out. Containing it here keeps every caller from
+ * having to remember.
+ */
+const UNSET = '\u0000unset'
+const intoRadix = (v: string) => v === '' ? UNSET : v
+const outOfRadix = (v: string) => v === UNSET ? '' : v
+
 export function Select (
   { value, onChange, choices, danger }:
   { value: string; onChange: (v: string) => void; choices: Choice[]; danger?: boolean }
 ) {
   const groups = [...new Set(choices.map(c => c.group ?? ''))]
   return (
-    <SelectP.Root value={value} onValueChange={onChange}>
+    <SelectP.Root value={intoRadix(value)} onValueChange={v => onChange(outOfRadix(v))}>
       <SelectP.Trigger
         className={clsx(
           'field flex items-center justify-between gap-2 px-[10px] py-2 w-full cursor-pointer',
@@ -56,7 +67,7 @@ export function Select (
                 )}
                 {choices.filter(c => (c.group ?? '') === group).map(c => (
                   <SelectP.Item
-                    key={c.value} value={c.value} title={c.title}
+                    key={c.value} value={intoRadix(c.value)} title={c.title}
                     className="flex items-center gap-2 px-2 py-[6px] text-[12.5px] rounded-[6px]
                                cursor-pointer outline-none select-none text-label
                                data-[highlighted]:bg-soft data-[highlighted]:text-fg

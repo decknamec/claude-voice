@@ -337,7 +337,7 @@ export default function App () {
 
           <Stage />
           <Transcript />
-          <StatusBar mode={mode} onCycleMode={() => void cycleMode()} />
+          <StatusBar mode={mode} onCycleMode={() => void cycleMode()} narrow={narrow} />
         </main>
       </div>
     </>

@@ -2,17 +2,20 @@
 
 Mit Claude Code reden statt tippen — auf macOS, mit lokaler Spracherkennung.
 
-Drei Wege, die sich dieselbe Konfiguration und dieselbe Sprachausgabe teilen:
+Vier Wege, die sich dieselbe Konfiguration, dieselbe Session und dieselbe
+Sprachausgabe teilen:
 
 | | was es tut |
 |---|---|
+| **Claude Voice.app** | Eigenes Fenster. ⌥Leertaste holt es von überall nach vorn und nimmt auf, ein Symbol in der Menüleiste hält es erreichbar. |
+| **`claude-voice-ui`** | Dieselbe Oberfläche im Browser, falls du sie lieber in einem Tab hast. |
+| **`claude-voice`** | Im Terminal: reden, kurz Pause, Antwort kommt gesprochen zurück. |
 | **Vorlese-Hook** | Claude Code liest jede fertige Antwort vor. Du tippst weiter wie immer. |
-| **`claude-voice`** | Freisprech-Loop im Terminal: reden, kurz Pause, Antwort kommt gesprochen zurück. |
-| **`claude-voice-ui`** | Lokale Browser-Oberfläche: Push-to-Talk, mitlaufender Text, Freigaben für Werkzeuge, Abbrechen. |
-| **Claude Voice.app** | Dieselbe Oberfläche als Desktop-App: globaler Kurzbefehl ⌥Leertaste, Menüleisten-Symbol. |
 
 Die Spracherkennung läuft komplett lokal über [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 Nur der fertig transkribierte Text geht an die Claude-API — Audio verlässt den Rechner nie.
+
+![Claude Voice, während es zuhört](docs/bilder/fenster.png)
 
 ## Installation
 
@@ -67,26 +70,29 @@ claude-voice              # Freisprech-Loop, neue Session
 claude-voice --last       # letzte Voice-Session fortsetzen
 claude-voice --yolo       # Tools ohne Rückfrage (bypassPermissions)
 
-claude-voice-ui           # Browser-UI auf 127.0.0.1:7331
+claude-voice-ui           # Oberfläche im Browser, 127.0.0.1:7331
 claude-voice-ui --port N
 
 ~/.claude/hooks/voice on|off|toggle|stop|test|voices|status
 ```
 
-Im Loop beendet „stopp" oder Ctrl-C. In der UI: Klick oder Leertaste halten zum
-Sprechen, **Esc** oder „abbrechen" hält den laufenden Turn samt Sprachausgabe an,
-„beenden" fährt den Server herunter.
+Im Terminal-Loop beendet „stopp" oder Ctrl-C. In der Oberfläche: Klick oder
+Leertaste halten zum Sprechen, **Esc** hält den laufenden Zug samt Sprachausgabe
+an, „Beenden" fährt den Server herunter. In der App holt ⌥Leertaste das Fenster
+von überall nach vorn und startet die Aufnahme.
 
-Die UI hält **eine** Agent-Session offen, statt pro Äußerung einen neuen Prozess
-zu starten. Das bringt drei Dinge, die vorher nicht gingen:
+Alle drei Wege halten **eine** Agent-Session offen, statt pro Äußerung einen
+neuen Prozess zu starten. Gemessen kostete allein der Prozessstart früher rund
+13 Sekunden je Satz. Was die offene Session bringt:
 
-- **Antwort in ~2 s statt ~13 s.** Der Prozessstart dominierte vorher alles.
+- **Antwort in ~2 s statt ~13 s.**
 - **Text läuft mit,** während er entsteht; jeder fertige Satz geht sofort in die
   Sprachausgabe, statt auf die komplette Antwort zu warten.
 - **Freigaben.** Will Claude ein Werkzeug benutzen, das eine Bestätigung braucht,
-  erscheint eine Karte mit Werkzeugname und Parametern. Der Turn hält an, bis du
-  entschieden hast. Über die CLI ist das nicht möglich — sie lehnt solche Aufrufe
-  im Headless-Betrieb kommentarlos ab, ohne zu fragen.
+  hält der Zug an. In der Oberfläche erscheint eine Karte mit Werkzeugname und
+  Parametern, im Terminal eine Frage mit j/n, die zusätzlich vorgelesen wird.
+  In der Oberfläche lässt sich eine Freigabe auf „immer dieser Aufruf" oder
+  „immer dieses Werkzeug" ausweiten — für die laufende Session.
 
 Unter **Einstellungen** liegen Sprachausgabe, Stimme, Modell, Sprache und
 Berechtigungen. Modell und Berechtigungen gelten sofort für die laufende
@@ -118,7 +124,7 @@ in der Konfig oder `--tts` beim Start:
 | `say` | sofort | – | macOS-Systemstimme, sprödeste Qualität |
 
 `auto` (Default) nimmt ElevenLabs wenn ein Key da ist, sonst Edge, Piper, `say`.
-In der Browser-UI lässt sich Backend und Stimme im Kopf umschalten; was nicht
+In der Oberfläche lassen sich Backend und Stimme umschalten; was nicht
 eingerichtet ist, erscheint ausgegraut mit dem Grund daneben.
 Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre die
 schlechteste Antwort, wenn man auf eine Sprachausgabe wartet.
@@ -165,7 +171,7 @@ Alternativ die Umgebungsvariable `ELEVENLABS_API_KEY`.
 ## Konfiguration
 
 `~/.claude/voice.conf` gilt überall, `~/.claude/voice-loop.conf` überschreibt sie
-für Loop und UI. Siehe `conf/*.example` für alle Schalter. Die wichtigsten:
+für alle Wege. Siehe `conf/*.example` für alle Schalter. Die wichtigsten:
 
 - `CLAUDE_MODEL` — leer heißt dein Default. Für ein Gespräch ist ein schnelleres
   Modell oft angenehmer als das stärkste.
@@ -178,25 +184,32 @@ für Loop und UI. Siehe `conf/*.example` für alle Schalter. Die wichtigsten:
 ## Wie es zusammenhängt
 
 ```
-Loop:  Mikro ─> sox rec ─> whisper.cpp ─> claude -p ────────> claude-say ─> 🔈
-                (Stille)    (lokal)       (Prozess je Turn)
+Terminal:  Mikro ─> sox rec ─> whisper.cpp ─> agent-loop.mjs ──┬─> claude-say ─> 🔈
+                    (Stille)    (lokal)       (offene Session) └─> Frage j/n
 
-UI:    Mikro ─> Browser ─> whisper-server ─> Agent SDK ──┬──> claude-say ─> 🔈
-                            (Modell bleibt   (eine offene │     (satzweise)
-                             geladen)         Session)    └──> Freigabe-Karte
+Fenster:   Mikro ─> Webview ─> whisper-server ─> server.mjs ───┬─> claude-say ─> 🔈
+                                (Modell bleibt   (offene       │   (satzweise)
+                                 geladen)         Session)     └─> Freigabe-Karte
 ```
 
-Der Loop startet weiterhin einen Prozess je Äußerung — für ein Terminal-Werkzeug
-ist das vertretbar. Die UI hält die Session offen, weil sie Freigaben und
-mitlaufenden Text braucht.
+Die App ist eine Tauri-Schale um denselben `server.mjs`: sie startet ihn als
+Kindprozess auf einem freien Port und lädt ihn ins Fenster. Der Agent SDK ist
+TypeScript-only, also bleibt der Server, wo er ist — Rust bringt nur, was ein
+Browser-Tab nicht kann.
 
-Loop und UI melden sich für ihre Laufzeit in `~/.claude/voice-locks/` an (eine Datei
+Der Terminal-Loop spricht über zwei benannte Pipes mit `ui/agent-loop.mjs`,
+einer Zeile JSON je Ereignis. Dadurch hat auch er eine offene Session, Freigaben
+und satzweise Sprachausgabe.
+
+Terminal und Fenster melden sich für ihre Laufzeit in `~/.claude/voice-locks/` an (eine Datei
 pro PID). Der Stop-Hook schweigt, solange dort ein lebender Prozess steht — sonst
 spräche jede Antwort doppelt. Tote Einträge nach einem Absturz werden beim nächsten
 Blick aufgeräumt, und zwei parallele Instanzen melden sich nicht gegenseitig ab.
 
-Antworten im Loop und in der UI sind per `--append-system-prompt` auf drei bis vier
-Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.
+Antworten sind über den Systemprompt auf drei bis vier Sätze ohne Markdown
+begrenzt — vorgelesene Codeblöcke sind unbrauchbar. In der Oberfläche lässt sich
+darüber hinaus ein Antwortstil wählen (knapp, ausführlich, erklärend, sachlich,
+locker, sokratisch, oder ein selbst formulierter).
 
 ## Bekannte Grenzen
 

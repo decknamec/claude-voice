@@ -92,6 +92,8 @@ export const de = {
     vocabularyPlaceholder: 'Begriffe, die Whisper sonst verhört - mit Komma getrennt',
     apply: 'übernehmen',
     vocabularyApplied: 'Fachwörter übernommen',
+    notifyWhenDone: 'Bescheid geben, wenn eine lange Antwort fertig ist',
+    notifyDenied: 'Der Browser hat Benachrichtigungen abgelehnt. Das lässt sich nur in den Website-Einstellungen zurücknehmen.',
     toolLinesInTranscript: 'Werkzeugzeilen im Verlauf',
     showFullCommands: 'Befehle vollständig zeigen',
     tools: 'Werkzeuge',
@@ -332,6 +334,7 @@ export const de = {
   },
 
   toast: {
+    notifications: 'Benachrichtigungen',
     session: 'Session',
     mode: 'Modus',
     context: 'Kontext',

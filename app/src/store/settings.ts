@@ -36,6 +36,8 @@ export type Settings = {
   language: LanguageChoice
   style: string
   styleText: string
+  /** Desktop notification when a long turn finishes while you are elsewhere. */
+  notifyWhenDone: boolean
   toolLines: boolean
   fullCommands: boolean
   sidebarOpen: boolean
@@ -62,6 +64,7 @@ export const useSettings = create<Settings>()(persist((set) => ({
   language: 'de',
   style: 'standard',
   styleText: '',
+  notifyWhenDone: false,
   toolLines: true,
   fullCommands: false,
   sidebarOpen: !matchMedia(NARROW).matches,

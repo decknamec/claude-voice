@@ -85,6 +85,8 @@ export const en: Messages = {
     vocabularyPlaceholder: 'Terms Whisper otherwise mishears, comma separated',
     apply: 'apply',
     vocabularyApplied: 'Terms applied',
+    notifyWhenDone: 'Tell me when a long answer is finished',
+    notifyDenied: 'The browser refused notifications. That can only be undone in the site settings.',
     toolLinesInTranscript: 'Tool lines in the transcript',
     showFullCommands: 'Show commands in full',
     tools: 'Tools',
@@ -325,6 +327,7 @@ export const en: Messages = {
   },
 
   toast: {
+    notifications: 'Notifications',
     session: 'Session',
     mode: 'Tool mode',
     context: 'Context',

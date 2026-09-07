@@ -19,6 +19,7 @@ const { useSession, emptyStats } = await import('./store/session.ts')
 const { argText, shortArg, stepLabel } = await import('./lib/tools.ts')
 const { timeSince, messagesFor, resolveLocale } = await import('./lib/i18n/index.ts')
 const { readVerdict, routeUtterance } = await import('./lib/verdict.ts')
+const { shouldNotify, SLOW_TURN_MS } = await import('./lib/notify.ts')
 
 const S = () => useSession.getState()
 const set = (patch: Parameters<ReturnType<typeof useSession.getState>['set']>[0]) => S().set(patch)
@@ -228,4 +229,25 @@ test('route: an unclear answer asks again rather than becoming a turn', () => {
 test('route: silence is neither an answer nor a turn', () => {
   assert.deepEqual(routeUtterance('', true), { kind: 'nothing' })
   assert.deepEqual(routeUtterance('   ', false), { kind: 'nothing' })
+})
+
+// ── Desktop notification ─────────────────────────────────────────────
+
+const notifyArgs = {
+  enabled: true, hidden: true, permission: 'granted', elapsedMs: SLOW_TURN_MS
+}
+
+test('notify: fires only when all four conditions hold', () => {
+  assert.equal(shouldNotify(notifyArgs), true)
+  assert.equal(shouldNotify({ ...notifyArgs, enabled: false }), false)
+  assert.equal(shouldNotify({ ...notifyArgs, hidden: false }), false)
+  assert.equal(shouldNotify({ ...notifyArgs, permission: 'default' }), false)
+  assert.equal(shouldNotify({ ...notifyArgs, permission: 'denied' }), false)
+})
+
+test('notify: a quick answer gets none', () => {
+  // You are still sitting there when it comes back in two seconds.
+  assert.equal(shouldNotify({ ...notifyArgs, elapsedMs: 2000 }), false)
+  assert.equal(shouldNotify({ ...notifyArgs, elapsedMs: SLOW_TURN_MS - 1 }), false)
+  assert.equal(shouldNotify({ ...notifyArgs, elapsedMs: 60_000 }), true)
 })

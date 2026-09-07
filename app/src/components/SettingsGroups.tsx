@@ -154,6 +154,20 @@ export function SettingsGroup ({ models }: { models: ModelInfo[] }) {
               }}>{m.settings.apply}</button>
 
       <div className="flex flex-col gap-[2px] border-t border-line pt-2">
+        <Checkbox
+          checked={settings.notifyWhenDone}
+          onChange={async v => {
+            if (!v) { settings.set({ notifyWhenDone: false }); return }
+            // Ask here, where the operator just said they want it. Denial is
+            // final in the browser, so say so instead of leaving a checkbox
+            // ticked that does nothing.
+            const granted = typeof Notification !== 'undefined' &&
+              (Notification.permission === 'granted' ||
+               await Notification.requestPermission() === 'granted')
+            settings.set({ notifyWhenDone: granted })
+            if (!granted) toast(m.toast.notifications, m.settings.notifyDenied, true)
+          }}
+          label={m.settings.notifyWhenDone} />
         <Checkbox checked={settings.toolLines} onChange={v => settings.set({ toolLines: v })}
                   label={m.settings.toolLinesInTranscript} />
         <Checkbox checked={settings.fullCommands} onChange={v => settings.set({ fullCommands: v })}

@@ -2,6 +2,8 @@ import { TOKEN, api } from './api.ts'
 import { audio } from './audio.ts'
 import { argText, stepLabel } from './tools.ts'
 import { useSession, nextId, emptyStats } from '../store/session.ts'
+import { useSettings } from '../store/settings.ts'
+import { shouldNotify } from './notify.ts'
 import { de, type Messages } from './i18n/messages.ts'
 import type { PermissionRequest, Stats, SubagentEvent, Todo, ToolEvent } from './types.ts'
 
@@ -25,8 +27,13 @@ const S = () => useSession.getState()
  * away and the turn ran long enough to have been forgotten.
  */
 function notifyDesktop (text: string) {
-  if (!document.hidden || Notification?.permission !== 'granted') return
-  if (Date.now() - turnStart < 15000) return
+  const allowed = shouldNotify({
+    enabled: useSettings.getState().notifyWhenDone,
+    hidden: document.hidden,
+    permission: typeof Notification === 'undefined' ? 'default' : Notification.permission,
+    elapsedMs: Date.now() - turnStart
+  })
+  if (!allowed) return
   try { new Notification('Claude Voice', { body: text.slice(0, 140), tag: 'claude-voice' }) } catch { /* ignored */ }
 }
 

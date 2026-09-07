@@ -241,8 +241,3 @@ Transkript-Auswertung, die Textaufbereitung fuers Vorlesen.
 Was hier nicht geprueft werden kann: alles, was ein Mikrofon, das Whisper-Modell
 oder eine angemeldete `claude`-CLI braucht. Diese Grenze ist echt — ein gruener
 Durchlauf heisst nicht, dass gesprochen werden kann.
-
-GitHub Actions laesst dasselbe auf einem frischen Klon laufen. Genau das ist
-der Zweck: auf dem Entwicklungsrechner liegen `node_modules`, `dist` und die
-Rust-Toolchain schon herum, dort laeuft alles auch dann, wenn im Repo etwas
-fehlt.

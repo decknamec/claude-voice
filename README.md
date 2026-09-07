@@ -8,7 +8,8 @@ Drei Wege, die sich dieselbe Konfiguration und dieselbe Sprachausgabe teilen:
 |---|---|
 | **Vorlese-Hook** | Claude Code liest jede fertige Antwort vor. Du tippst weiter wie immer. |
 | **`claude-voice`** | Freisprech-Loop im Terminal: reden, kurz Pause, Antwort kommt gesprochen zurück. |
-| **`claude-voice-ui`** | Lokale Browser-UI: Push-to-Talk, mitlaufender Text, Freigaben für Werkzeuge, Abbrechen. |
+| **`claude-voice-ui`** | Lokale Browser-Oberfläche: Push-to-Talk, mitlaufender Text, Freigaben für Werkzeuge, Abbrechen. |
+| **Claude Voice.app** | Dieselbe Oberfläche als Desktop-App: globaler Kurzbefehl ⌥Leertaste, Menüleisten-Symbol. |
 
 Die Spracherkennung läuft komplett lokal über [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 Nur der fertig transkribierte Text geht an die Claude-API — Audio verlässt den Rechner nie.
@@ -24,10 +25,40 @@ cd ~/claude-voice && ./install.sh
 Beispielkonfiguration, lädt auf Wunsch das Whisper-Modell (~547 MB) und registriert
 den Stop-Hook in `settings.json`. Nichts wird überschrieben, was schon existiert.
 
-Abhängigkeiten: `brew install whisper-cpp sox ffmpeg jq`. Die UI braucht zusätzlich
-Node und holt sich beim ersten Start das Agent SDK per `npm install` (einmalig).
+Abhängigkeiten: `brew install whisper-cpp sox ffmpeg jq`. Die Oberfläche braucht
+zusätzlich Node; `claude-voice-ui` holt beim ersten Start das Agent SDK und baut
+die Oberfläche (React, TypeScript, Tailwind) — beides einmalig und automatisch.
 
 Danach `~/.claude/bin` in den PATH und `~/.claude/hooks/voice on`.
+
+## Desktop-App
+
+Die App ist eine Tauri-Schale um denselben lokalen Server. Sie bringt, was ein
+Browser-Tab nicht kann: einen globalen Kurzbefehl (⌥Leertaste, holt das Fenster
+nach vorn und startet die Aufnahme), ein Symbol in der Menüleiste, und
+Mikrofonzugriff ohne Erlaubnisfrage je Herkunft.
+
+Fertige DMG unter [Releases](../../releases). Selbst bauen:
+
+```bash
+cd desktop && npx tauri build      # braucht Rust: https://rustup.rs
+```
+
+**Zur Gatekeeper-Warnung.** Die DMG ist nur ad-hoc signiert — es gibt kein
+Apple-Developer-Zertifikat dahinter. macOS meldet deshalb beim ersten Öffnen
+„beschädigt und kann nicht geöffnet werden". Das ist kein Befund über die
+Datei, sondern die Voreinstellung für alles Unsignierte aus dem Netz. Einmalig:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Claude Voice.app"
+```
+
+Wem das zu weit geht: selbst bauen. Dann entsteht die App lokal und trägt gar
+kein Quarantäne-Merkmal.
+
+Die App bringt den Server nicht mit — sie sucht `server.mjs` dort, wo
+`install.sh` ihn hinlegt. Ohne die Installation startet sie mit einem Hinweis
+statt mit einem leeren Fenster.
 
 ## Benutzung
 
@@ -169,16 +200,16 @@ Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.
 
 ## Bekannte Grenzen
 
-- Nur macOS (`say`, `afplay`, sox-Aufnahme über CoreAudio).
-- Der CLI-Loop startet weiterhin einen Prozess je Äußerung (~13 s pro Turn). Wer
-  Tempo will, nimmt die UI (~2 s). Der Umbau des Loops steht aus.
-- Freigaben gibt es nur in der UI. Der Loop verweigert ohne `--yolo` weiterhin
-  stillschweigend alles, was eine Bestätigung bräuchte.
-- Der Headless-Modus von `claude -p` verweigert ohne `--yolo` Tool-Aufrufe, die eine
-  Bestätigung bräuchten — stillschweigend. Für echte Arbeit im Loop brauchst du das Flag.
-- Kein Wake-Word. Der Loop nimmt auf, sobald es laut genug wird.
-- Die UI bindet nur an `127.0.0.1`, weil der Endpunkt `claude -p` startet. Nicht ins
-  Netz stellen.
+- Nur macOS (`say`, `afplay`, sox-Aufnahme über CoreAudio, die App ist ein
+  Cocoa-Bündel).
+- Kein Wake-Word. Der Freisprech-Modus nimmt auf, sobald es laut genug wird.
+- Die Schwellwerte der Sprachaktivitätserkennung sind geschätzt, nicht mit einer
+  echten Stimme gemessen. Zur Laufzeit verstellbar über
+  `__voice.tune({ startSec, endSec })`.
+- Der Server bindet nur an `127.0.0.1` und verlangt ein Token, weil seine
+  Endpunkte Claude mit Werkzeugzugriff starten. Nicht ins Netz stellen.
+- Die DMG ist ad-hoc signiert, kein Apple-Zertifikat. Siehe oben zur
+  Gatekeeper-Warnung.
 
 ## Tests
 

@@ -119,6 +119,10 @@ export const de = {
     bypassPermissions: 'ohne jede Rückfrage'
   },
 
+  spoken: {
+    permission: (tool: string) => `Freigabe für ${tool}?`,
+    unclear: 'Das war kein klares Ja oder Nein.'
+  },
   backendLabel: {
     auto: 'Automatisch',
     piper: 'Piper (lokal)',
@@ -188,6 +192,7 @@ export const de = {
 
   transcript: {
     you: 'Du',
+    orSayYesNo: 'oder sag einfach ja oder nein',
     approvalNeeded: 'Freigabe erforderlich',
     wantsToUse: (tool: string) => `Claude möchte ${tool} benutzen.`,
     allow: 'Erlauben',

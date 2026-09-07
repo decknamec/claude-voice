@@ -168,6 +168,9 @@ export function connect () {
   on<PermissionRequest>('permission', request => {
     const s = S()
     s.set({ permissions: [...s.permissions, request], state: 'waiting' })
+    // Hands-free means nobody is watching the screen. Without a spoken
+    // question the session just goes quiet and looks like it hung.
+    if (s.handsFree) void api.speak(m.spoken.permission(request.tool))
   })
 
   on<{ id: string }>('audio', ({ id }) => {

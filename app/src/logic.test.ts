@@ -18,6 +18,7 @@ Object.assign(globalThis, {
 const { useSession, emptyStats } = await import('./store/session.ts')
 const { argText, shortArg, stepLabel } = await import('./lib/tools.ts')
 const { timeSince, messagesFor, resolveLocale } = await import('./lib/i18n/index.ts')
+const { readVerdict, routeUtterance } = await import('./lib/verdict.ts')
 
 const S = () => useSession.getState()
 const set = (patch: Parameters<ReturnType<typeof useSession.getState>['set']>[0]) => S().set(patch)
@@ -163,4 +164,68 @@ test('time: just now, minutes, hours, days', () => {
   assert.equal(timeSince('de', now - 3 * 3600_000), 'vor 3 h')
   assert.equal(timeSince('en', now - 3 * 3600_000), '3 h ago')
   assert.equal(timeSince('de', now - 2 * 86_400_000), 'vor 2 Tagen')
+})
+
+// ── Spoken yes and no ────────────────────────────────────────────────
+// This decides whether a tool runs. A misheard "no" only asks again; a
+// misheard "yes" runs something nobody agreed to, so anything unclear has to
+// come back as null.
+
+test('verdict: plain yes and no in both languages', () => {
+  for (const w of ['ja', 'Ja!', 'klar', 'okay', 'yes', 'sure', 'go ahead']) {
+    assert.equal(readVerdict(w), true, w)
+  }
+  for (const w of ['nein', 'Nee.', 'stopp', 'no', 'deny', 'cancel']) {
+    assert.equal(readVerdict(w), false, w)
+  }
+})
+
+test('verdict: a sentence is not an answer', () => {
+  // Whisper hands over whatever was said. A long utterance while a permission
+  // is pending is the operator talking, not consenting.
+  assert.equal(readVerdict('ja also ich wollte eigentlich etwas ganz anderes'), null)
+  assert.equal(readVerdict('yes but only if the tests still pass afterwards'), null)
+})
+
+test('verdict: both signals at once is not consent', () => {
+  assert.equal(readVerdict('nein doch ja'), null)
+  assert.equal(readVerdict('no yes'), null)
+})
+
+test('verdict: nothing recognisable stays null', () => {
+  for (const w of ['', '   ', 'hm', 'weiter so', 'was meinst du', '???']) {
+    assert.equal(readVerdict(w), null, JSON.stringify(w))
+  }
+})
+
+test('verdict: punctuation and case do not matter', () => {
+  assert.equal(readVerdict('JA!!!'), true)
+  assert.equal(readVerdict('  nein,  '), false)
+})
+
+// ── Routing a finished recording ─────────────────────────────────────
+// The branch that runs a tool cannot rest on a manual test: driving the real
+// hands-free loop needs live audio, so the decision itself is checked here.
+
+test('route: without a pending permission everything is a turn', () => {
+  assert.deepEqual(routeUtterance('ja', false), { kind: 'turn', said: 'ja' })
+  assert.deepEqual(routeUtterance('was macht die CI?', false),
+    { kind: 'turn', said: 'was macht die CI?' })
+})
+
+test('route: a clear answer settles the permission', () => {
+  assert.deepEqual(routeUtterance('ja', true), { kind: 'answer', allow: true })
+  assert.deepEqual(routeUtterance('nein', true), { kind: 'answer', allow: false })
+})
+
+test('route: an unclear answer asks again rather than becoming a turn', () => {
+  // Sending it on would strand the permission: the turn stays blocked on a
+  // promise nobody resolves.
+  assert.deepEqual(routeUtterance('hm was war die Frage', true), { kind: 'askAgain' })
+  assert.deepEqual(routeUtterance('weiter so', true), { kind: 'askAgain' })
+})
+
+test('route: silence is neither an answer nor a turn', () => {
+  assert.deepEqual(routeUtterance('', true), { kind: 'nothing' })
+  assert.deepEqual(routeUtterance('   ', false), { kind: 'nothing' })
 })

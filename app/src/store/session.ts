@@ -29,6 +29,9 @@ export type Session = {
   turnRunning: boolean
   speaking: boolean
   busy: boolean
+  /** Lives here rather than in the view: the stream and the controls both act
+   *  on it, and neither can reach React state. */
+  handsFree: boolean
 
   bubbles: Bubble[]
   liveId: string | null
@@ -68,6 +71,7 @@ export const useSession = create<Session>()((set, get) => ({
   state: 'idle',
   turnRunning: false,
   speaking: false,
+  handsFree: false,
   busy: false,
 
   bubbles: [],

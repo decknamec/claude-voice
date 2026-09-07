@@ -632,6 +632,16 @@ const server = createServer(async (req, res) => {
       } catch { return json(res, 200, { said: '' }) }   // a preview must never disrupt
     }
 
+    // Speech the interface asks for, not speech from an answer. A permission
+    // request stops a hands-free session dead, and without a spoken question
+    // there is nothing to hear that it is waiting.
+    if (req.method === 'POST' && url.pathname === '/api/speak') {
+      const { text } = JSON.parse((await body(req)).toString('utf8'))
+      if (!text?.trim()) return json(res, 400, { error: 'empty text' })
+      enqueueSpeech(String(text).slice(0, 200), conf)
+      return json(res, 200, { ok: true })
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/say') {
       const { text } = JSON.parse((await body(req)).toString('utf8'))
       if (!text?.trim()) return json(res, 400, { error: 'empty text' })

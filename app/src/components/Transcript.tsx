@@ -52,6 +52,7 @@ function PermissionCard (
 ) {
   const { m } = useMessages()
   const toast = useToasts(s => s.show)
+  const handsFree = useSession(s => s.handsFree)
   const short = shortArg(tool, input)
   const answer = async (allow: boolean, scope?: 'exact' | 'tool') => {
     try { await controls.answerPermission(id, allow, scope) }
@@ -69,13 +70,18 @@ function PermissionCard (
                       font-mono text-[11px] text-dim whitespace-pre-wrap break-words">
         {JSON.stringify(input, null, 2)}
       </pre>
-      <div className="mt-[10px] flex gap-[6px]">
+      <div className="mt-[10px] flex flex-wrap items-center gap-[6px]">
         <button className="chip" data-on="true" onClick={() => answer(true)}>
           {m.transcript.allow}
         </button>
         <button className="chip" data-danger="true" onClick={() => answer(false)}>
           {m.transcript.deny}
         </button>
+        {/* Hands-free reads the question aloud and takes the answer by voice.
+            Nobody guesses that, so it has to be on the card. */}
+        {handsFree && (
+          <span className="text-[11px] text-dim">{m.transcript.orSayYesNo}</span>
+        )}
       </div>
       {/* The simple case stays one click; the scope sits in a second row below,
           so a session does not ask again for every Bash call. */}

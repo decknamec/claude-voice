@@ -2,6 +2,7 @@ import { ApiError, api } from './api.ts'
 import { audio } from './audio.ts'
 import { markTurnStart, resetStats } from './stream.ts'
 import { nextId, useSession } from '../store/session.ts'
+import { routeUtterance } from './verdict.ts'
 import type { Messages } from './i18n/index.ts'
 
 const S = () => useSession.getState()
@@ -35,7 +36,10 @@ export function describeError (err: unknown, m: Messages): [string, string] {
 export const controls = {
   async startRecording () {
     const s = S()
-    if (s.busy || s.state !== 'idle') return
+    // `waiting` is the exception: a pending permission is answerable by voice,
+    // and busy stays true across it because the turn has not ended.
+    const answering = s.state === 'waiting' && s.permissions.length > 0
+    if (!answering && (s.busy || s.state !== 'idle')) return
     await audio.startRecording()
     s.set({ state: 'listening', preview: '' })
   },
@@ -47,21 +51,34 @@ export const controls = {
   /** After release: transcribe, show, submit. */
   async submitRecording (blob: Blob, m: Messages) {
     const s = S()
+    const pending = s.permissions[0]
     s.set({ busy: true, state: 'transcribing', preview: '' })
     try {
       const { said, ms } = await api.transcribe(blob)
-      if (!said) {
-        s.set({ state: 'idle', busy: false })
+      const route = routeUtterance(said, !!pending)
+      if (route.kind === 'nothing') {
+        s.set({ state: pending ? 'waiting' : 'idle', busy: !!pending })
+        return
+      }
+      if (route.kind === 'askAgain') {
+        s.set({ state: 'waiting' })
+        void api.speak(m.spoken.unclear)
+        return
+      }
+      if (route.kind === 'answer') {
+        // Only this one call, never a standing rule: a rule made from a
+        // misheard word would outlive the mistake.
+        await controls.answerPermission(pending!.id, route.allow)
         return
       }
       s.addBubble({
-        id: nextId(), who: 'user', text: said, meta: m.stage.transcribedLocally(ms)
+        id: nextId(), who: 'user', text: route.said, meta: m.stage.transcribedLocally(ms)
       })
       // The event stream takes over here: text, approvals and the end of the
       // turn arrive over SSE, not as the response to this call.
       markTurnStart()
       s.set({ turnRunning: true, state: 'thinking' })
-      await api.say(said)
+      await api.say(route.said)
     } catch (e) {
       s.set({ busy: false })
       throw e

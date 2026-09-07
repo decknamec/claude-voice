@@ -112,6 +112,10 @@ export const en: Messages = {
     bypassPermissions: 'never ask'
   },
 
+  spoken: {
+    permission: (tool: string) => `Permission for ${tool}?`,
+    unclear: 'That was not a clear yes or no.'
+  },
   backendLabel: {
     auto: 'Automatic',
     piper: 'Piper (local)',
@@ -181,6 +185,7 @@ export const en: Messages = {
 
   transcript: {
     you: 'You',
+    orSayYesNo: 'or just say yes or no',
     approvalNeeded: 'Approval needed',
     wantsToUse: (tool: string) => `Claude wants to use ${tool}.`,
     allow: 'Allow',

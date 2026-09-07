@@ -26,7 +26,7 @@ export default function App () {
   const [models, setModels] = useState<ModelInfo[]>([])
   const [mode, setMode] = useState<PermissionMode>('default')
   const [keyHelp, setKeyHelp] = useState(false)
-  const [handsFree, setHandsFree] = useState(false)
+
   const [sessionReady, setSessionReady] = useState(false)
   const spaceHeld = useRef(false)
 
@@ -93,9 +93,6 @@ export default function App () {
     })
   }, [models.length])
 
-  const handsFreeRef = useRef(false)
-  useEffect(() => { handsFreeRef.current = handsFree }, [handsFree])
-
   const messagesRef = useRef(m)
   useEffect(() => { messagesRef.current = m }, [m])
 
@@ -121,7 +118,7 @@ export default function App () {
           session.set({ hint: messagesRef.current.stage.handsFreeActive })
           return
         }
-        if (!handsFreeRef.current) return
+        if (!useSession.getState().handsFree) return
         if (event.type === 'start') {
           if (s.busy && !audio.isSpeaking()) return          // a turn is in flight
           if (audio.isSpeaking()) void controls.interrupt().then(() => controls.startRecording())
@@ -160,7 +157,7 @@ export default function App () {
   }, [mode, m, toast])
 
   const toggleHandsFree = useCallback(async (on: boolean) => {
-    setHandsFree(on)
+    session.set({ handsFree: on })
     if (!on) { session.set({ hint: null }); return }
     try {
       await audio.microphone()
@@ -170,7 +167,7 @@ export default function App () {
     } catch (err) {
       const [title, text] = describeError(err, m)
       toast(title, text, true)
-      setHandsFree(false)
+      session.set({ handsFree: false })
     }
   }, [m, session, toast])
 
@@ -183,7 +180,7 @@ export default function App () {
       if (keyHelp) { setKeyHelp(false); return }
       if (ev.key === 'Tab' && ev.shiftKey) { ev.preventDefault(); void cycleMode(); return }
       const key = ev.key.toLowerCase()
-      if (key === 'f') { ev.preventDefault(); void toggleHandsFree(!handsFree); return }
+      if (key === 'f') { ev.preventDefault(); void toggleHandsFree(!session.handsFree); return }
       if (key === 'a') { ev.preventDefault(); settings.set({ trailOpen: !settings.trailOpen }); return }
       if (key === 'n') { ev.preventDefault(); void controls.newSession(); return }
       if (key === 's') { ev.preventDefault(); settings.set({ sidebarOpen: !settings.sidebarOpen }); return }
@@ -211,7 +208,7 @@ export default function App () {
     addEventListener('keydown', down)
     addEventListener('keyup', up)
     return () => { removeEventListener('keydown', down); removeEventListener('keyup', up) }
-  }, [handsFree, keyHelp, overlaying, closeSidebar, cycleMode, toggleHandsFree, settings, m, toast])
+  }, [session.handsFree, keyHelp, overlaying, closeSidebar, cycleMode, toggleHandsFree, settings, m, toast])
 
   const keyRows: [string, string][] = [
     [m.keyboard.space, m.keyboard.holdToTalk],
@@ -321,9 +318,9 @@ export default function App () {
             <span className="ml-auto flex gap-[6px]">
               <button className="chip" title={m.header.newSessionHint}
                       onClick={() => void controls.newSession()}>{m.header.newSession}</button>
-              <button className="chip" data-on={handsFree}
+              <button className="chip" data-on={session.handsFree}
                       title={m.header.handsFreeHint}
-                      onClick={() => void toggleHandsFree(!handsFree)}>{m.header.handsFree}</button>
+                      onClick={() => void toggleHandsFree(!session.handsFree)}>{m.header.handsFree}</button>
               <button className="chip" data-on={settings.trailOpen}
                       title={m.header.activityHint}
                       onClick={() => settings.set({ trailOpen: !settings.trailOpen })}>

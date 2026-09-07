@@ -82,6 +82,8 @@ export const api = {
 
   transcribe: (blob: Blob) => postBlob<{ said: string; ms: number }>('/api/transcribe', blob),
   say: (text: string) => post<{ ok: boolean }>('/api/say', { text }),
+  /** Reads a sentence aloud without submitting it as a turn. */
+  speak: (text: string) => post<{ ok: boolean }>('/api/speak', { text }),
   preview: (blob: Blob) => postBlob<{ said: string }>('/api/preview', blob),
   interrupt: () => post<{ ok: boolean }>('/api/interrupt', {}),
   reset: () => post<{ ok: boolean }>('/api/reset', {}),

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# An-/Ausschalter für das Vorlesen der Claude-Antworten.
+# Toggle for reading Claude's answers aloud.
 set -euo pipefail
 STATE="$HOME/.claude/voice-enabled"
 CONF="$HOME/.claude/voice.conf"

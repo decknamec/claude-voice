@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# Sprachausgabe für alle Voice-Wege (Hook, CLI-Loop, UI). Blockiert bis fertig.
+# Speech output for every voice path (hook, CLI loop, UI). Blocks until done.
 #
 #   claude-say "Text"
-#   claude-say --tts piper "Text"   Backend für diesen Aufruf erzwingen
-#   claude-say --backends           zeigt, was verfügbar und aktiv ist
-#   claude-say --doctor             Konfiguration prüfen
-#   claude-say --list               ElevenLabs-Stimmen und -Modelle
-#   claude-say --find-op            1Password-Referenz für den Key suchen
+#   claude-say --tts piper "Text"   force a backend for this call
+#   claude-say --backends           show what is available and active
+#   claude-say --doctor             check the configuration
+#   claude-say --list               ElevenLabs voices and models
+#   claude-say --find-op            find the 1Password reference for the key
 #
-# Backends (TTS_BACKEND in der Konfig oder --tts):
-#   auto         ElevenLabs wenn ein Key da ist, sonst edge, piper, say
-#   elevenlabs   beste Qualität, kostet Credits, braucht Netz (~1,1 s)
-#   edge         Microsoft-Neural-Stimmen, kostenlos, ohne Key (~0,5 s).
-#                NICHT lokal — geht über einen undokumentierten Endpunkt.
-#   piper        lokal und offline (~0,7 s), hörbar synthetischer
-#   say          macOS-Systemstimme, sofort, sprödeste Qualität
+# Backends (TTS_BACKEND in the config, or --tts):
+#   auto         ElevenLabs if a key is present, otherwise edge, piper, say
+#   elevenlabs   best quality, costs credits, needs the network (~1.1 s)
+#   edge         Microsoft neural voices, free, no key (~0.5 s).
+#                NOT local: it goes through an undocumented endpoint.
+#   piper        local and offline (~0.7 s), audibly more synthetic
+#   say          macOS system voice, instant, most brittle quality
 #
-# Ein fehlschlagendes Backend fällt immer auf `say` zurück — Stille wäre
-# die schlechteste Antwort, wenn man gerade auf eine Sprachausgabe wartet.
+# A failing backend always falls back to `say`: silence is the worst answer
+# while someone is waiting to be spoken to.
 #
-# ElevenLabs-Key, in dieser Reihenfolge: $ELEVENLABS_API_KEY,
-# ~/.claude/voice.env, 1Password (EL_KEY_OP_REF), macOS-Schlüsselbund.
+# ElevenLabs key, in this order: $ELEVENLABS_API_KEY, ~/.claude/voice.env,
+# 1Password (EL_KEY_OP_REF), macOS keychain.
 set -uo pipefail
 
-# Vorrang: --tts > geerbte Umgebung > Konfigdatei > Default. Die Umgebung muss
-# zwischengespeichert werden, weil die Zuweisung unten sie sonst überschreibt
-# und der Loop/die UI ihre Wahl nicht durchreichen könnten.
+# Precedence: --tts > inherited environment > config file > default. The
+# environment has to be cached, because the assignment below would overwrite it
+# and the loop or the UI could not pass their choice through.
 _TTS_FROM_ENV="${TTS_BACKEND:-}"
 TTS_BACKEND=auto
 VOICE=Anna; RATE=190
@@ -50,7 +50,7 @@ EL_KEY_OP_ACCOUNT=""
 source "$HOME/.claude/hooks/lib/elkey.sh"
 [ -n "$_TTS_FROM_ENV" ] && TTS_BACKEND="$_TTS_FROM_ENV"
 
-# --tts und --voice vor allem anderen auswerten, damit sie die Konfig überstimmen.
+# Read --tts and --voice before anything else so they override the config.
 _VOICE_OVERRIDE=""
 OUT=""            # gesetzt -> schreiben statt abspielen
 while true; do
@@ -76,7 +76,7 @@ api_key() { el_resolve_key || return 1; printf '%s' "$ELEVENLABS_API_KEY"; }
 piper_bin() {
   [ -n "$PIPER_BIN" ] && { printf '%s' "$PIPER_BIN"; return 0; }
   command -v piper 2>/dev/null && return 0
-  # uv tool install legt hier ab; der Hook erbt diesen PATH oft nicht.
+  # uv tool install puts it here, and the hook often does not inherit this PATH.
   [ -x "$HOME/.local/bin/piper" ] && { printf '%s' "$HOME/.local/bin/piper"; return 0; }
   return 1
 }
@@ -90,14 +90,14 @@ edge_bin() {
 }
 edge_ready() { edge_bin >/dev/null; }
 
-# Einzige Stelle, an der Ton den Rechner verlässt — oder eben in eine Datei geht.
+# The only place where audio leaves the machine, or goes into a file instead.
 emit() {  # $1 = erzeugte Datei
   if [ -n "$OUT" ]; then mv "$1" "$OUT"; else afplay "$1"; rm -f "$1"; fi
 }
 
 speak_say() {
   if [ -n "$OUT" ]; then
-    # 16-bit-WAV: `say` kann das ohne Umweg, und Browser spielen es ab.
+    # 16-bit WAV: `say` produces it directly and browsers play it.
     say -v "$VOICE" -r "$RATE" -o "$OUT" --data-format=LEI16@22050 --file-format=WAVE -- "$1"
   else
     say -v "$VOICE" -r "$RATE" -- "$1"
@@ -132,8 +132,8 @@ speak_elevenlabs() {
   local key body dir tmp code rc
   key=$(api_key) || return 1
 
-  # Ohne konfigurierte Stimme die erste des Accounts nehmen und merken, damit
-  # der Lookup nicht bei jedem Satz erneut über die Leitung geht.
+  # With no voice configured, take the account's first one and remember it, so
+  # the lookup does not go over the wire again for every sentence.
   local cache="$HOME/.claude/.elevenlabs-voice"
   [ -z "$EL_VOICE_ID" ] && [ -s "$cache" ] && EL_VOICE_ID=$(cat "$cache")
   if [ -z "$EL_VOICE_ID" ]; then
@@ -160,11 +160,11 @@ speak_elevenlabs() {
   emit "$tmp"; rc=$?; rm -rf "$dir"; return $rc
 }
 
-# ── Unterbefehle ─────────────────────────────────────────────────────
+# ── Subcommands ──────────────────────────────────────────────────────
 case "${1:-}" in
   --backends-json)
-    # Maschinenlesbar für die UI: was ist verfügbar, warum nicht, welche Stimmen.
-    # Eine Quelle der Wahrheit — die UI soll keine Textausgabe parsen müssen.
+    # Machine readable for the UI: what is available, why not, which voices.
+    # One source of truth, so the UI never has to parse text output.
     el_ok=false; el_detail="kein Key hinterlegt"
     if el_resolve_key; then el_ok=true; el_detail="Key über $EL_KEY_SOURCE"; fi
     p_ok=false; p_detail="piper oder Stimmmodell fehlt"
@@ -219,7 +219,7 @@ case "${1:-}" in
     exit 0 ;;
   --doctor)
     echo "Backend: $TTS_BACKEND"
-    echo "Piper:   $(piper_ready && echo "ok — $(piper_bin), $(basename "$PIPER_MODEL")" || echo "nicht eingerichtet")"
+    echo "Piper:   $(piper_ready && echo "ok - $(piper_bin), $(basename "$PIPER_MODEL")" || echo "nicht eingerichtet")"
     if el_resolve_key; then
       echo "Key:     $EL_KEY_SOURCE (${#ELEVENLABS_API_KEY} Zeichen)"
       code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \

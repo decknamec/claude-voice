@@ -1,17 +1,18 @@
-// Textaufbereitung fürs Vorlesen — der Zwilling von hooks/lib/speakable.sh.
-// Beide Wege müssen identisch filtern: der Hook und der CLI-Loop gehen durch die
-// Bash-Fassung, die UI durch diese hier. Driftet eine ab, klingt dieselbe Antwort
-// je nach Weg anders. tests/speakable-diff.mjs hält die zwei über
-// tests/speakable-cases.txt zusammen — wer hier eine Regel ändert, ändert sie dort mit.
+// Text preparation for reading aloud, the twin of hooks/lib/speakable.sh.
+// Both paths have to filter identically: the hook and the CLI loop go through
+// the bash version, the UI through this one. If one drifts, the same answer
+// sounds different depending on the path. tests/speakable-diff.mjs holds the
+// two together via tests/speakable-cases.txt, so a rule changed here is
+// changed there as well.
 export function speakable (t) {
   return t
-    .replace(/```[\s\S]*?```/g, '')                                    // Codeblöcke
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, ' ')                          // Listenmarker
-    .replace(/^\s*#{1,6}\s*/gm, '')                                    // Überschriften
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')                         // Links/Bilder -> Linktext
-    .replace(/\bhttps?:\/\/\S+/g, ' ')                                 // nackte URLs
-    .replace(/(?:~|\.{0,2})?(?:\/[\w.@+-]+)+\/([\w.@+-]+)\/?/g, '$1')  // Pfad -> Dateiname
-    .replace(/`([^`]*)`/g, '$1')                                       // Inline-Code
-    .replace(/[*_>|#]+/g, ' ')                                         // restliches Markdown
+    .replace(/```[\s\S]*?```/g, '')                                    // code blocks
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, ' ')                          // list markers
+    .replace(/^\s*#{1,6}\s*/gm, '')                                    // headings
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')                         // links and images -> link text
+    .replace(/\bhttps?:\/\/\S+/g, ' ')                                 // bare URLs
+    .replace(/(?:~|\.{0,2})?(?:\/[\w.@+-]+)+\/([\w.@+-]+)\/?/g, '$1')  // path -> file name
+    .replace(/`([^`]*)`/g, '$1')                                       // inline code
+    .replace(/[*_>|#]+/g, ' ')                                         // remaining markdown
     .replace(/\s+/g, ' ').trim()
 }

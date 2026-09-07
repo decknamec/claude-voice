@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Claude Code Stop hook -> liest die letzte Antwort vor (via bin/claude-say).
+# Claude Code Stop hook -> reads the last answer aloud (via bin/claude-say).
 #
-# An/Aus:      ~/.claude/hooks/voice on|off|status|test
-# Konfig:      ~/.claude/voice.conf  (VOICE, RATE, MAX_CHARS)
-# Schweigt, solange Subagents laufen — und im macOS-Fokusmodus, falls
-# hooks/lib/focus.sh vorhanden ist (optional, nicht Teil des Repos).
+# On/off:      ~/.claude/hooks/voice on|off|status|test
+# Config:      ~/.claude/voice.conf  (VOICE, RATE, MAX_CHARS)
+# Stays quiet while subagents are running, and in macOS focus mode if
+# hooks/lib/focus.sh is present (optional, not part of this repo).
 set -euo pipefail
 
 STATE="$HOME/.claude/voice-enabled"
@@ -20,14 +20,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/speakable.sh"
 source "$HERE/lib/voicelock.sh"
 
-# focus.sh ist optional und gehört nicht zu diesem Repo — wer es hat (macOS
-# Focus/"Nicht stören" erkennen), bei dem schweigt der Hook im Fokusmodus.
+# focus.sh is optional and not part of this repo. Where it exists (detecting
+# macOS Focus / Do Not Disturb), the hook stays quiet in focus mode.
 if [ -f "$HERE/lib/focus.sh" ]; then
   source "$HERE/lib/focus.sh"
   focus_active && exit 0
 fi
 
-# Sprechen Loop oder UI gerade selbst, bleibt der Hook stumm.
+# While the loop or the UI is speaking for itself, the hook stays mute.
 voicelock_active && exit 0
 
 input=$(cat)
@@ -40,18 +40,18 @@ running_agents=$(printf '%s' "$input" \
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // ""')
 [ -n "$transcript" ] && [ -f "$transcript" ] || exit 0
 
-# Letzte Assistant-Textnachricht aus dem JSONL-Transcript. `fromjson? // empty`
-# überspringt kaputte/teilgeschriebene Zeilen, statt jq aussteigen zu lassen.
+# Last assistant text message from the JSONL transcript. `fromjson? // empty`
+# skips broken or half-written lines instead of letting jq bail out.
 raw=$(tail -n 400 "$transcript" \
   | jq -R 'fromjson? // empty' \
   | jq -rs '[.[] | select(.type == "assistant") | .message.content[]?
              | select(.type == "text") | .text] | last // ""' 2>/dev/null || true)
 [ -n "$raw" ] || exit 0
 
-# Vorlesbar machen: Codeblöcke, Pfade, URLs und Markdown-Rauschen raus — sonst
-# buchstabiert `say` minutenlang Slashes und Backticks.
-# Erst auf ganze Absätze eindampfen, dann vorlesbar machen. Andersherum wären
-# die Absatzgrenzen schon weg und es bliebe nur der harte Schnitt.
+# Make it speakable: strip code blocks, paths, URLs and markdown noise, or
+# `say` spells out slashes and backticks for minutes.
+# Reduce to whole paragraphs first, then make it speakable. The other way round
+# the paragraph boundaries would already be gone and only a hard cut remains.
 spoken=$(clip_to_paragraph "$raw" "$MAX_CHARS")
 spoken=$(printf '%s' "$spoken" | speakable_text)
 [ -n "$spoken" ] || exit 0

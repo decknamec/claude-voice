@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Wer gerade selbst spricht (Loop, UI), meldet sich hier an — dann schweigt der
-# Stop-Hook. Ein PID-Verzeichnis statt einer einzelnen Datei, damit zwei parallele
-# Instanzen sich nicht gegenseitig abmelden und ein Absturz kein Lock hinterlässt.
-# Überschreibbar, damit Tests nicht im echten Verzeichnis herumfuhrwerken.
+# Whoever is speaking for itself (loop, UI) registers here, and the stop hook
+# stays quiet. A directory of pids rather than a single file, so two parallel
+# instances do not deregister each other and a crash leaves no lock behind.
+# Overridable, so tests do not rummage around in the real directory.
 VOICELOCK_DIR="${VOICELOCK_DIR:-$HOME/.claude/voice-locks}"
 VOICELOCK_LEGACY="$HOME/.claude/voice-loop.lock"
 
 voicelock_acquire() { mkdir -p "$VOICELOCK_DIR"; : > "$VOICELOCK_DIR/$$"; }
 voicelock_release() { rm -f "$VOICELOCK_DIR/$$"; }
 
-# 0 = jemand spricht gerade selbst. Tote PIDs werden nebenbei aufgeräumt.
+# 0 = someone is speaking for itself. Dead pids get cleaned up along the way.
 voicelock_active() {
   [ -f "$VOICELOCK_LEGACY" ] && return 0   # Instanzen von vor diesem Umbau
   [ -d "$VOICELOCK_DIR" ] || return 1

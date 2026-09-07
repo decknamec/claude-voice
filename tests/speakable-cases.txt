@@ -1,7 +1,7 @@
-# Fixtures für tests/speakable-diff.mjs: Eingabe <TAB> erwartete Ausgabe.
-# \n steht für einen Zeilenumbruch. Keine Tabs in den Feldern.
-# Beide Filter — hooks/lib/speakable.sh und ui/speakable.mjs — müssen hier
-# dasselbe liefern; genau hier sind sie schon einmal auseinandergelaufen.
+# Fixtures for tests/speakable-diff.mjs: input <TAB> expected output.
+# \n stands for a newline. No tabs inside the fields.
+# Both filters - hooks/lib/speakable.sh and ui/speakable.mjs - have to produce
+# the same thing here; this is exactly where they have drifted apart before.
 Siehe /a/b/hook.sh hier	Siehe hook.sh hier
 Steht in ~/.claude/hooks/voice drin	Steht in voice drin
 Zwei Pfade: /a/b/eins.sh und /c/d/zwei.sh	Zwei Pfade: eins.sh und zwei.sh

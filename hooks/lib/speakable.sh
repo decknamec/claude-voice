@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# Gemeinsame Text-Aufbereitung fürs Vorlesen. Genutzt von speak-answer.sh (Hook)
-# und ~/.claude/bin/claude-voice (Freisprech-Loop).
+# Shared text preparation for reading aloud. Used by speak-answer.sh (hook)
+# and ~/.claude/bin/claude-voice (hands-free loop).
 
-# stdin -> vorlesbarer Fließtext auf stdout.
-# Wirft alles raus, was `say` sonst buchstabieren würde.
+# stdin -> speakable prose on stdout.
+# Throws out everything `say` would otherwise spell out.
 speakable_text() {
   perl -0777 -pe '
-    s/```.*?```//gs;                       # Codeblöcke
-    s/^\s*(?:[-*+]|\d+\.)\s+/ /gm;         # Listenmarker
-    s/^\s*#{1,6}\s*//gm;                   # Überschriften
-    s/!?\[([^\]]*)\]\([^)]*\)/$1/g;        # Links/Bilder -> Linktext
-    s{\bhttps?://\S+}{ }g;                 # nackte URLs
-    s{(?:~|\.{0,2})?(?:/[\w.@+-]+)+/([\w.@+-]+)/?}{$1}g;  # Pfad -> Dateiname
-    s/`([^`]*)`/$1/g;                      # Inline-Code
-    s/[*_>|#]+/ /g;                        # restliches Markdown
+    s/```.*?```//gs;                       # code blocks
+    s/^\s*(?:[-*+]|\d+\.)\s+/ /gm;         # list markers
+    s/^\s*#{1,6}\s*//gm;                   # headings
+    s/!?\[([^\]]*)\]\([^)]*\)/$1/g;        # links and images -> link text
+    s{\bhttps?://\S+}{ }g;                 # bare URLs
+    s{(?:~|\.{0,2})?(?:/[\w.@+-]+)+/([\w.@+-]+)/?}{$1}g;  # path -> file name
+    s/`([^`]*)`/$1/g;                      # inline code
+    s/[*_>|#]+/ /g;                        # remaining markdown
     s/\s+/ /g; s/^\s+|\s+$//g;
   '
 }
 
-# $1 = Rohtext, $2 = max Zeichen. Nimmt ganze Absätze, solange sie passen —
-# ein hart abgeschnittener Satz klingt wie ein Verbindungsabbruch.
+# $1 = raw text, $2 = max characters. Takes whole paragraphs while they fit:
+# a hard-cut sentence sounds like a dropped connection.
 clip_to_paragraph() {
   local raw="$1" max="${2:-600}" out="" para
   while IFS= read -r para; do
@@ -31,7 +31,7 @@ clip_to_paragraph() {
   printf '%s' "${out:-$raw}"
 }
 
-# $1 = Text, $2 = max Zeichen. Kürzt auf die letzte Satzgrenze davor.
+# $1 = text, $2 = max characters. Clips to the last sentence boundary before it.
 clip_to_sentence() {
   local text="$1" max="${2:-600}"
   if [ "${#text}" -gt "$max" ]; then

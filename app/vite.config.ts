@@ -4,7 +4,7 @@ import tailwind from '@tailwindcss/vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
 // Eine einzige Datei als Ergebnis. Die Seite haelt das Sitzungs-Token und darf
-// Claude mit bypassPermissions steuern — sie soll zur Laufzeit nichts
+// Claude mit bypassPermissions steuern - sie soll zur Laufzeit nichts
 // nachladen und nirgends hinreichen. Die Abhaengigkeiten existieren beim
 // Bauen, nicht im Auslieferungsstand.
 export default defineConfig({

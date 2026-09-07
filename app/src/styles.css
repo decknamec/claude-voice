@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-/* ── Gestaltungsmarken ────────────────────────────────────────────────
-   Bleiben CSS-Variablen statt Tailwind-Konstanten: der Akzent ist zur
-   Laufzeit umstellbar, und ein Wert, der sich ändern kann, gehört nicht in
-   ein Stylesheet, das beim Bauen festgeschrieben wird. */
+/* Design tokens.
+   These stay CSS variables rather than Tailwind constants: the accent changes
+   at runtime, and a value that can change does not belong in a stylesheet that
+   is frozen at build time. */
 :root {
   --e: cubic-bezier(.4, 0, .2, 1);
   --e-out: cubic-bezier(.05, .7, .1, 1);
@@ -39,13 +39,16 @@
   --shadow: 0 1px 2px #0006, 0 12px 32px #0008;
 }
 
-/* Stellschrauben aus den Einstellungen. Alles läuft über Variablen, damit die
-   Größenverhältnisse untereinander erhalten bleiben. */
-body[data-dense="kompakt"] { --pad-msg: 9px 12px; --gap-feed: 8px; }
-body[data-dense="luft"]    { --pad-msg: 18px 22px; --gap-feed: 22px; }
-body[data-radius="kantig"] { --r-pill: 6px; --r-panel: 4px; --r-field: 4px; }
-body[data-radius="weich"]  { --r-pill: 999px; --r-panel: 20px; --r-field: 14px; }
-body[data-calm="an"] * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+/* Settings that change proportions run through variables, so the sizes keep
+   their relationship to one another. */
+body[data-density="compact"] { --pad-msg: 9px 12px; --gap-feed: 8px; }
+body[data-density="airy"]    { --pad-msg: 18px 22px; --gap-feed: 22px; }
+body[data-corners="sharp"]   { --r-pill: 6px; --r-panel: 4px; --r-field: 4px; }
+body[data-corners="soft"]    { --r-pill: 999px; --r-panel: 20px; --r-field: 14px; }
+body[data-motion="reduced"] * {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}
 
 @theme inline {
   --color-bg: var(--bg);
@@ -78,8 +81,8 @@ body {
 }
 ::selection { background: var(--accent-soft); color: var(--fg); }
 
-/* Eigene Scrollbalken: die des Systems setzen im dunklen Layout einen hellen
-   Balken, der schwerer wiegt als alles andere auf der Seite. */
+/* Own scrollbars: the system ones draw a light thumb over the dark layout that
+   outweighs everything else on the page. */
 * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -107,26 +110,21 @@ body {
 .chip:hover { color: var(--fg); border-color: var(--fg-dim); }
 .chip:active { transform: translateY(1px); }
 .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chip[data-an="true"] { color: var(--accent); border-color: var(--accent); }
-.chip[data-gefahr="true"]:hover { color: var(--err); border-color: var(--err); }
+.chip[data-on="true"] { color: var(--accent); border-color: var(--accent); }
+.chip[data-danger="true"]:hover { color: var(--err); border-color: var(--err); }
 .field:hover { border-color: var(--fg-dim); }
 .field:focus { outline: none; border-color: var(--accent); }
 
+/* In the desktop shell the title bar sits over the content, so the traffic
+   lights would land on the wordmark. Only make room there, not in a browser. */
+[data-shell="on"] aside { padding-top: 34px; }
+
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-/* Reines Aufblenden: eine Abdunklung, die auch noch von unten hereinfährt,
-   zieht den Blick auf sich, statt ihn auf der Leiste zu lassen. */
-@keyframes blende { from { opacity: 0 } to { opacity: 1 } }
+/* Plain fade: a backdrop that also slides in pulls the eye to itself instead
+   of leaving it on the sidebar. */
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes sspin { to { transform: rotate(1turn); } }
 @keyframes hop { 0%, 60%, 100% { transform: translateY(0); opacity: .35 } 30% { transform: translateY(-6px); opacity: 1 } }
-@keyframes agpulse { 50% { opacity: .25 } }
-@keyframes puls { 0% { transform: scale(1); opacity: .5 } 100% { transform: scale(2.1); opacity: 0 } }
-@keyframes toastRein { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: none } }
-@keyframes toastRaus { to { opacity: 0; transform: translateY(-8px) } }
-
-/* In der Desktop-Schale liegt die Titelleiste über dem Inhalt: die drei Knöpfe
-   säßen sonst auf der Wortmarke. Nur dort Platz schaffen, im Browser nicht. */
-[data-schale="an"] aside { padding-top: 34px; }
-[data-schale="an"] .ziehbar { -webkit-app-region: drag; }
-[data-schale="an"] .ziehbar button,
-[data-schale="an"] .ziehbar input,
-[data-schale="an"] .ziehbar select { -webkit-app-region: no-drag; }
+@keyframes agent-pulse { 50% { opacity: .25 } }
+@keyframes pulse-ring { 0% { transform: scale(1); opacity: .5 } 100% { transform: scale(2.1); opacity: 0 } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: none } }

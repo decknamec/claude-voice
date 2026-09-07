@@ -5,11 +5,13 @@ import { CaretDown, Check } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 
-// Radix übernimmt Tastatur, Fokusfalle und ARIA. Die handgebauten Menüs davor
-// hatten genau da Lücken, und `appearance:none` auf einem echten <select> war
-// jedes Mal ein Kampf gegen das Steuerelement des Systems.
+/**
+ * Radix carries keyboard handling, focus containment and ARIA. A native
+ * `<select>` under `appearance: none` also fights the system control on macOS,
+ * which draws its own arrow inside the border.
+ */
 
-export function Feld ({ label, children }: { label: string; children: ReactNode }) {
+export function Field ({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-[5px] text-[11.5px] text-label">
       <span>{label}</span>
@@ -18,20 +20,20 @@ export function Feld ({ label, children }: { label: string; children: ReactNode 
   )
 }
 
-export type Wahl = { wert: string; text: string; titel?: string; gruppe?: string }
+export type Choice = { value: string; label: string; title?: string; group?: string }
 
-export function Auswahl (
-  { wert, auf, wahlen, gefahr }:
-  { wert: string; auf: (w: string) => void; wahlen: Wahl[]; gefahr?: boolean }
+export function Select (
+  { value, onChange, choices, danger }:
+  { value: string; onChange: (v: string) => void; choices: Choice[]; danger?: boolean }
 ) {
-  const gruppen = [...new Set(wahlen.map(w => w.gruppe ?? ''))]
+  const groups = [...new Set(choices.map(c => c.group ?? ''))]
   return (
-    <SelectP.Root value={wert} onValueChange={auf}>
+    <SelectP.Root value={value} onValueChange={onChange}>
       <SelectP.Trigger
         className={clsx(
           'field flex items-center justify-between gap-2 px-[10px] py-2 w-full cursor-pointer',
           'data-[state=open]:border-accent',
-          gefahr && 'text-err border-err!'
+          danger && 'text-err border-err!'
         )}
       >
         <SelectP.Value />
@@ -45,23 +47,23 @@ export function Auswahl (
                      animate-[rise_var(--t-quick)_var(--ease-out-sig)_both]"
         >
           <SelectP.Viewport className="p-1">
-            {gruppen.map(g => (
-              <SelectP.Group key={g}>
-                {g && (
+            {groups.map(group => (
+              <SelectP.Group key={group}>
+                {group && (
                   <SelectP.Label className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-[.08em] text-dim">
-                    {g}
+                    {group}
                   </SelectP.Label>
                 )}
-                {wahlen.filter(w => (w.gruppe ?? '') === g).map(w => (
+                {choices.filter(c => (c.group ?? '') === group).map(c => (
                   <SelectP.Item
-                    key={w.wert} value={w.wert} title={w.titel}
+                    key={c.value} value={c.value} title={c.title}
                     className="flex items-center gap-2 px-2 py-[6px] text-[12.5px] rounded-[6px]
                                cursor-pointer outline-none select-none text-label
                                data-[highlighted]:bg-soft data-[highlighted]:text-fg
                                data-[state=checked]:text-fg"
                   >
                     <SelectP.ItemIndicator><Check size={11} weight="bold" /></SelectP.ItemIndicator>
-                    <SelectP.ItemText>{w.text}</SelectP.ItemText>
+                    <SelectP.ItemText>{c.label}</SelectP.ItemText>
                   </SelectP.Item>
                 ))}
               </SelectP.Group>
@@ -73,14 +75,15 @@ export function Auswahl (
   )
 }
 
-export function Haken (
-  { an, auf, text }: { an: boolean; auf: (b: boolean) => void; text: string }
+export function Checkbox (
+  { checked, onChange, label }:
+  { checked: boolean; onChange: (b: boolean) => void; label: string }
 ) {
   return (
     <label className="flex flex-row items-center gap-[9px] min-h-[26px] py-[3px] cursor-pointer
                       text-[12px] text-label hover:text-fg transition-colors">
       <CheckboxP.Root
-        checked={an} onCheckedChange={v => auf(v === true)}
+        checked={checked} onCheckedChange={v => onChange(v === true)}
         className="w-[15px] h-[15px] shrink-0 rounded-[calc(var(--r-field)/2)] border border-line
                    bg-panel grid place-items-center cursor-pointer transition-colors
                    data-[state=checked]:bg-accent data-[state=checked]:border-accent
@@ -88,25 +91,27 @@ export function Haken (
       >
         <CheckboxP.Indicator><Check size={10} weight="bold" color="#fff" /></CheckboxP.Indicator>
       </CheckboxP.Root>
-      <span>{text}</span>
+      <span>{label}</span>
     </label>
   )
 }
 
-export function Regler (
-  { label, wert, auf, min, max, schritt, anzeige }:
-  { label: string; wert: number; auf: (n: number) => void
-    min: number; max: number; schritt: number; anzeige: string }
+export function Slider (
+  { label, value, onChange, min, max, step, display }:
+  { label: string; value: number; onChange: (n: number) => void
+    min: number; max: number; step: number; display: string }
 ) {
   return (
     <div className="flex flex-col gap-[7px] text-[11.5px] text-label">
+      {/* Label left, value right, track below: the value on its own line under
+          the track costs a row and frays the column. */}
       <span className="flex items-baseline justify-between gap-[10px]">
         <span>{label}</span>
-        <span className="text-fg tabular-nums text-right">{anzeige}</span>
+        <span className="text-fg tabular-nums text-right">{display}</span>
       </span>
       <SliderP.Root
-        value={[wert]} min={min} max={max} step={schritt}
-        onValueChange={v => auf(v[0])}
+        value={[value]} min={min} max={max} step={step}
+        onValueChange={v => onChange(v[0])}
         className="relative flex items-center w-full h-[14px] cursor-pointer select-none touch-none"
       >
         <SliderP.Track className="relative h-[3px] w-full grow rounded-[2px] bg-line">
@@ -122,14 +127,14 @@ export function Regler (
   )
 }
 
-export function Textfeld (
-  { wert, auf, platzhalter, zeilen = 2 }:
-  { wert: string; auf: (s: string) => void; platzhalter: string; zeilen?: number }
+export function TextArea (
+  { value, onChange, placeholder, rows = 2 }:
+  { value: string; onChange: (s: string) => void; placeholder: string; rows?: number }
 ) {
   return (
     <textarea
-      rows={zeilen} value={wert} placeholder={platzhalter}
-      onChange={e => auf(e.target.value)}
+      rows={rows} value={value} placeholder={placeholder}
+      onChange={e => onChange(e.target.value)}
       className="field w-full px-[10px] py-2 text-[12.5px] resize-y min-h-[56px]
                  placeholder:text-dim placeholder:opacity-70"
     />

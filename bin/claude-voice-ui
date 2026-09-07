@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Startet die lokale Voice-UI und öffnet sie im Browser.
+# Starts the local voice UI and opens it in the browser.
 #   claude-voice-ui [--port N] [--no-open] [--tts piper|elevenlabs|say|auto]
 set -uo pipefail
 PORT="${VOICE_UI_PORT:-7331}"
@@ -10,17 +10,17 @@ while [ $# -gt 0 ]; do
     --no-open) OPEN=0; shift ;;
     --tts) export TTS_BACKEND="$2"; shift 2 ;;
     -h|--help) echo "claude-voice-ui [--port N] [--no-open] [--tts piper|elevenlabs|say|auto]"; exit 0 ;;
-    *) echo "unbekannt: $1" >&2; exit 1 ;;
+    *) echo "unbekannte Option: $1" >&2; exit 1 ;;
   esac
 done
 
-# Der Vorlese-Hook muss schweigen — die UI spricht selbst.
+# The read-aloud hook has to stay quiet: the UI speaks for itself.
 [ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
 [ -f "$HOME/.claude/voice-loop.conf" ] && source "$HOME/.claude/voice-loop.conf"
 source "$HOME/.claude/hooks/lib/voicelock.sh"
 source "$HOME/.claude/hooks/lib/elkey.sh"
 
-# Einmal auflösen; node vererbt die Variable an jeden claude-say-Aufruf.
+# Resolve once; node passes the variable down to every claude-say call.
 el_resolve_key && export ELEVENLABS_API_KEY
 voicelock_acquire
 cleanup() { voicelock_release; pkill -x say 2>/dev/null; }
@@ -31,34 +31,34 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   exit 1
 fi
 
-# Der Server braucht das Agent SDK. Beim ersten Start einmal holen.
+# The server needs the Agent SDK. Fetch it once on first start.
 UI_DIR="$(cd "$(dirname "$(readlink "$HOME/.claude/voice-ui/server.mjs" || echo "$HOME/.claude/voice-ui/server.mjs")")" && pwd)"
 if [ ! -d "$UI_DIR/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
   echo "Installiere das Agent SDK (einmalig)…"
   (cd "$UI_DIR" && npm install --silent) || {
-    echo "npm install fehlgeschlagen — siehe $UI_DIR" >&2; exit 1; }
+    echo "npm install fehlgeschlagen - siehe $UI_DIR" >&2; exit 1; }
 fi
 
-# Die React-Oberfläche wird gebaut, nicht ausgeliefert: ein 440-kB-Bündel
-# gehört nicht in die Versionsverwaltung. Fehlt sie oder ist eine Quelldatei
-# neuer als der Bau, einmal bauen. Schlägt das fehl, springt der Server auf
-# die handgeschriebene Fassung zurück, statt gar nicht zu starten.
+# The React interface is built, not committed: a 440 kB bundle does not belong
+# in version control. If it is missing, or a source file is newer than the
+# build, build it once. If that fails the server falls back to the plain
+# interface rather than not starting at all.
 APP_DIR="$(cd "$UI_DIR/.." && pwd)/app"
 if [ -f "$APP_DIR/package.json" ]; then
-  NEUER=$(find "$APP_DIR/src" "$APP_DIR/index.html" -newer "$APP_DIR/dist/index.html" 2>/dev/null | head -1)
-  if [ ! -f "$APP_DIR/dist/index.html" ] || [ -n "$NEUER" ]; then
+  NEWER=$(find "$APP_DIR/src" "$APP_DIR/index.html" -newer "$APP_DIR/dist/index.html" 2>/dev/null | head -1)
+  if [ ! -f "$APP_DIR/dist/index.html" ] || [ -n "$NEWER" ]; then
     [ -d "$APP_DIR/node_modules/vite" ] || {
       echo "Baue die Oberfläche (einmalig)…"
       (cd "$APP_DIR" && npm install --silent) >/dev/null 2>&1
     }
     echo "Baue die Oberfläche…"
     (cd "$APP_DIR" && npm run build --silent) >/dev/null 2>&1 \
-      || echo "Bau fehlgeschlagen — es läuft die einfache Oberfläche." >&2
+      || echo "Bau fehlgeschlagen - es läuft die einfache Oberfläche." >&2
   fi
 fi
 
-# Token statt bloßem "nur localhost": eine fremde Webseite kann es nicht lesen,
-# weil es nur in unserer eigenen URL steht.
+# A token rather than plain "localhost only": a foreign web page cannot read
+# it, because it exists only in our own URL.
 TOKEN=$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
 export VOICE_UI_TOKEN="$TOKEN"
 

@@ -1,34 +1,36 @@
-// Die Formen, die der Server über /api und den Ereignisstrom schickt.
-// Handgeschrieben, weil sie zu server.mjs gehören und nicht zum SDK: genau
-// hier ging beim letzten Mal ein Feldname daneben, der niemandem auffiel.
+/**
+ * The shapes server.mjs sends over /api and the event stream.
+ *
+ * Hand-written because they belong to this repo's server rather than to the
+ * Agent SDK, and a field name that drifts here surfaces as a blank panel
+ * rather than an error.
+ */
 
-export type Zustand =
+export type UiState =
   | 'idle' | 'listening' | 'transcribing' | 'thinking'
   | 'speaking' | 'waiting' | 'error' | 'off'
 
-export type Sprache = 'de' | 'en' | 'auto'
-
-export type Modus =
+export type PermissionMode =
   | 'default' | 'acceptEdits' | 'plan' | 'auto' | 'dontAsk' | 'bypassPermissions'
 
-export type Kontext = {
+export type ContextUsage = {
   tokens: number
   max: number
-  prozent: number
-  modell?: string
+  percent: number
+  model?: string
 }
 
-export type Fenster = { pct: number; bis: string | null }
+export type RateWindow = { percent: number; resetsAt: string | null }
 
-export type Limits = {
-  abo: string | null
-  fuenfH: Fenster | null
-  siebenT: Fenster | null
-  opus: Fenster | null
-  sonnet: Fenster | null
+export type RateLimits = {
+  plan: string | null
+  fiveHour: RateWindow | null
+  sevenDay: RateWindow | null
+  opus: RateWindow | null
+  sonnet: RateWindow | null
 }
 
-export type ModellVerbrauch = { ein: number; aus: number; kosten: number }
+export type ModelUsage = { in: number; out: number; costUsd: number }
 
 export type Stats = {
   turns: number
@@ -40,13 +42,13 @@ export type Stats = {
   lastMs: number
   apiMs: number
   startedAt: number
-  ctx: Kontext | null
-  zweig: string
-  limits: Limits | null
-  modelle: Record<string, ModellVerbrauch>
+  ctx: ContextUsage | null
+  branch: string
+  limits: RateLimits | null
+  models: Record<string, ModelUsage>
 }
 
-export type WerkzeugEreignis = {
+export type ToolEvent = {
   phase: 'use' | 'result'
   id: string
   name?: string
@@ -56,12 +58,12 @@ export type WerkzeugEreignis = {
   parent: string | null
 }
 
-export type SubagentEreignis =
-  | { phase: 'start'; id: string; typ: string; desc: string }
+export type SubagentEvent =
+  | { phase: 'start'; id: string; kind: string; description: string }
   | { phase: 'text'; id: string; text: string }
   | { phase: 'done'; id: string; ok: boolean }
 
-export type FreigabeAnfrage = {
+export type PermissionRequest = {
   id: string
   tool: string
   input: Record<string, unknown>
@@ -73,7 +75,7 @@ export type Todo = {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
-export type Backend = {
+export type SpeechBackend = {
   id: string
   label: string
   detail: string
@@ -82,80 +84,90 @@ export type Backend = {
   voices: { id: string; name?: string }[]
 }
 
-export type SitzungKurz = {
+export type SessionSummary = {
   id: string
-  titel: string
-  zuletzt: number
-  aktuell: boolean
+  title: string
+  lastModified: number
+  current: boolean
 }
 
-export type VerlaufBlock =
-  | { rolle: 'du' | 'claude'; text: string }
-  | { rolle: 'werkzeug'; namen: string[]; n: number }
+export type TranscriptBlock =
+  | { role: 'user' | 'assistant'; text: string }
+  | { role: 'tool'; names: string[]; n: number }
 
 export type McpServer = {
   name: string
   status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'
   scope: string
   version: string
-  fehler: string
-  werkzeuge: string[]
+  error: string
+  tools: string[]
 }
 
-export type Befehl = { name: string; beschreibung: string; hinweis: string }
+export type SlashCommand = { name: string; description: string; hint: string }
 
-export type ModellInfo = { id: string; name: string; beschreibung: string; denktiefen: string[] }
+export type ModelInfo = {
+  id: string
+  name: string
+  description: string
+  depths: string[]
+}
 
-export type GitLage = {
+export type GitState = {
   repo: boolean
-  zweig?: string
-  zweige?: string[]
-  geaendert?: number
-  vor?: number
-  zurueck?: number
-  hatOben?: boolean
+  branch?: string
+  branches?: string[]
+  changed?: number
+  ahead?: number
+  behind?: number
+  hasUpstream?: boolean
 }
 
-export type StatusBericht = {
-  arbeit: { cwd: string; zweig: string }
+export type StatusReport = {
+  work: { cwd: string; branch: string }
   session: {
     id: string | null
-    laeuft: boolean
-    modell: string | null
-    denktiefe: string | null
-    werkzeuge: string
-    sprache: string
-    stil: string
-    laufzeitMs: number
+    running: boolean
+    model: string | null
+    depth: string | null
+    tools: string
+    language: string
+    style: string
+    runtimeMs: number
   }
-  verbrauch: {
-    zuege: number; ein: number; aus: number; cache: number
-    kosten: number; kontext: Kontext | null
-    modelle: Record<string, ModellVerbrauch>
+  usage: {
+    turns: number; in: number; out: number; cache: number
+    costUsd: number; ctx: ContextUsage | null
+    models: Record<string, ModelUsage>
   }
-  spracherkennung: { modell: string; vorhanden: boolean; server: string; port: number }
-  sprachausgabe: { backend: string; stimme: string }
-  laufzeit: { node: string; sdk: string; pid: number; port: number }
-  konto: { email?: string; organization?: string; subscriptionType?: string; apiKeySource?: string } | null
+  speechRecognition: { model: string; present: boolean; server: string; port: number }
+  speechOutput: { backend: string; voice: string }
+  runtime: { node: string; sdk: string; pid: number; port: number }
+  account: {
+    email?: string
+    organization?: string
+    subscriptionType?: string
+    apiKeySource?: string
+  } | null
   limits: { rate_limits_available?: boolean } | null
 }
 
-/** Eine Zeile in der Werkzeugspur. */
-export type SpurZeile = {
+/** One row in the tool trail. */
+export type TrailRow = {
   id: string
   name: string
   arg: string
-  ergebnis?: string
-  schief?: boolean
+  result?: string
+  failed?: boolean
   dim?: boolean
-  diff?: { raus: string; rein: string }
+  diff?: { removed: string; added: string }
 }
 
-export type Blase = {
+export type Bubble = {
   id: string
-  wer: 'du' | 'claude' | 'trenner' | 'werkzeug'
+  who: 'user' | 'assistant' | 'divider' | 'tool'
   text: string
   meta?: string
   live?: boolean
-  alt?: boolean
+  restored?: boolean
 }

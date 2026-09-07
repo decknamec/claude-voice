@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Verlinkt dieses Repo nach ~/.claude und prüft die Abhängigkeiten.
-# Symlinks statt Kopien: Änderungen im Repo wirken sofort, nichts driftet.
+# Links this repo into ~/.claude and checks the dependencies.
+# Symlinks rather than copies: changes in the repo take effect at once and
+# nothing drifts.
 #
-#   ./install.sh            installieren
-#   ./install.sh --uninstall  Symlinks + Hook-Registrierung entfernen
+#   ./install.sh              install
+#   ./install.sh --uninstall  remove symlinks and hook registration
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")" && pwd)"
 C="$HOME/.claude"
@@ -16,7 +17,7 @@ link() { mkdir -p "$(dirname "$2")"; ln -sfn "$1" "$2"; echo "  $2 -> ${1#$REPO/
 
 if [ "${1:-}" = "--uninstall" ]; then
   for f in bin/claude-say bin/claude-voice bin/claude-voice-ui \
-           voice-ui/server.mjs voice-ui/speakable.mjs voice-ui/transkript.mjs \
+           voice-ui/server.mjs voice-ui/speakable.mjs voice-ui/transcript.mjs \
            voice-ui/agent-loop.mjs \
            hooks/speak-answer.sh hooks/voice hooks/lib/speakable.sh hooks/lib/voicelock.sh hooks/lib/elkey.sh; do
     [ -L "$C/$f" ] && rm -f "$C/$f" && echo "  entfernt: $C/$f"
@@ -51,7 +52,7 @@ link "$REPO/bin/claude-voice"        "$C/bin/claude-voice"
 link "$REPO/bin/claude-voice-ui"     "$C/bin/claude-voice-ui"
 link "$REPO/ui/server.mjs"           "$C/voice-ui/server.mjs"
 link "$REPO/ui/speakable.mjs"        "$C/voice-ui/speakable.mjs"
-link "$REPO/ui/transkript.mjs"       "$C/voice-ui/transkript.mjs"
+link "$REPO/ui/transcript.mjs"       "$C/voice-ui/transcript.mjs"
 link "$REPO/ui/agent-loop.mjs"       "$C/voice-ui/agent-loop.mjs"
 link "$REPO/hooks/speak-answer.sh"   "$HOOK"
 link "$REPO/hooks/voice"             "$C/hooks/voice"
@@ -76,7 +77,7 @@ else
   if [ "$a" = "j" ] || [ "$a" = "J" ]; then
     mkdir -p "$MODEL_DIR"; curl -fL --progress-bar -o "$MODEL" "$MODEL_URL"
   else
-    echo "  übersprungen — später: curl -fL -o $MODEL $MODEL_URL"
+    echo "  übersprungen - später: curl -fL -o $MODEL $MODEL_URL"
   fi
 fi
 
@@ -86,9 +87,9 @@ if [ -d "$REPO/ui/node_modules/@anthropic-ai/claude-agent-sdk" ]; then
   echo "  Agent SDK vorhanden"
 elif command -v npm >/dev/null 2>&1; then
   echo "  installiere Agent SDK…"
-  (cd "$REPO/ui" && npm install --silent) && echo "  ok" || echo "  FEHLGESCHLAGEN — später: cd ui && npm install"
+  (cd "$REPO/ui" && npm install --silent) && echo "  ok" || echo "  FEHLGESCHLAGEN - später: cd ui && npm install"
 else
-  echo "  npm fehlt — die Browser-UI bleibt ohne Agent SDK unbenutzbar"
+  echo "  npm fehlt - die Browser-UI bleibt ohne Agent SDK unbenutzbar"
 fi
 
 echo
@@ -96,11 +97,11 @@ echo "Piper (lokales TTS, optional):"
 if command -v piper >/dev/null 2>&1 || [ -x "$HOME/.local/bin/piper" ]; then
   echo "  piper vorhanden"
 else
-  echo "  nicht installiert — mit uv:  uv tool install piper-tts"
+  echo "  nicht installiert - mit uv:  uv tool install piper-tts"
 fi
 PV="$C/piper-voices/de_DE-thorsten-medium.onnx"
 if [ -f "$PV" ]; then echo "  deutsche Stimme vorhanden"
-else echo "  keine Stimme — siehe README, Abschnitt \"Piper einrichten\""; fi
+else echo "  keine Stimme - siehe README, Abschnitt \"Piper einrichten\""; fi
 
 echo
 echo "Stop-Hook in settings.json:"
@@ -112,9 +113,9 @@ if [ ! -f "$SETTINGS" ]; then
   jq -n --arg cmd "$HOOK" '{hooks:{Stop:[{matcher:"",hooks:[{type:"command",command:$cmd}]}]}}' \
     > "$SETTINGS" && echo "  angelegt und registriert"
 elif ! jq -e . "$SETTINGS" >/dev/null 2>&1; then
-  # Wichtig: hier NICHT neu schreiben. Eine unlesbare settings.json ist meist eine
-  # volle Konfiguration mit einem Tippfehler — die wäre sonst weg.
-  echo "  $SETTINGS ist kein gültiges JSON — unangetastet gelassen."
+  # Do NOT rewrite here. An unreadable settings.json is usually a full
+  # configuration with a typo in it, and rewriting would lose all of it.
+  echo "  $SETTINGS ist kein gültiges JSON - unangetastet gelassen."
   echo "  Von Hand nachtragen: .hooks.Stop[0].hooks += [{type:\"command\", command:\"$HOOK\"}]"
 elif jq -e --arg cmd "$HOOK" '[.hooks.Stop[]?.hooks[]?.command] | index($cmd)' \
        "$SETTINGS" >/dev/null 2>&1; then
@@ -127,7 +128,7 @@ else
     mv "$tmp" "$SETTINGS"; echo "  registriert (Sicherung: ${BAK##*/})"
   else
     rm -f "$tmp" "$BAK"
-    echo "  FEHLGESCHLAGEN — settings.json unverändert" >&2
+    echo "  FEHLGESCHLAGEN - settings.json unverändert" >&2
   fi
 fi
 

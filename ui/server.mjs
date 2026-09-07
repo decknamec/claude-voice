@@ -1,14 +1,14 @@
-// Lokaler Backend-Server für die Voice-UI.
+// Local backend for the voice UI.
 //
-// Eine persistente Agent-SDK-Session statt `claude -p` pro Äußerung. Das ist
-// nicht nur schneller (der Prozessstart dominierte die Antwortzeit) — es ist
-// auch die einzige Bauart, in der Freigaben überhaupt möglich sind: die CLI
-// lehnt genehmigungspflichtige Aktionen im Headless-Modus stillschweigend ab,
-// ohne den Client zu fragen. `canUseTool` fragt ihn.
+// One persistent Agent SDK session rather than `claude -p` per utterance. That
+// is faster (process startup dominates the response time), and it is the only
+// shape in which permissions work at all: in headless mode the CLI silently
+// denies anything that needs approval instead of asking the client.
+// `canUseTool` asks it.
 //
-// Bindet nur an 127.0.0.1 und verlangt zusätzlich ein Start-Token: der Endpunkt
-// führt Werkzeuge aus, und "nur localhost" schützt nicht vor einer Webseite,
-// die der Nutzer im selben Browser offen hat.
+// Binds to 127.0.0.1 only and additionally requires a startup token: the
+// endpoint runs tools, and "localhost only" is no protection against a web
+// page the user has open in the same browser.
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises'
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID, randomBytes } from 'node:crypto'
 import { query, listSessions } from '@anthropic-ai/claude-agent-sdk'
 import { speakable } from './speakable.mjs'
-import { leseTranskript } from './transkript.mjs'
+import { readTranscript } from './transcript.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const HOME = homedir()
@@ -31,8 +31,8 @@ const ORIGIN = `http://127.0.0.1:${PORT}`
 function loadConf () {
   const conf = {
     MODEL: join(HOME, '.claude/whisper-models/ggml-large-v3-turbo-q5_0.bin'),
-    // Ohne das wird aus "Stop Hook" gern "Stopthook". Die CLI-Schleife spannt
-    // Whisper laengst so vor, der UI-Pfad tat es bisher nicht.
+    // Without this, "Stop Hook" comes back as "Stopthook". The CLI loop primes
+    // Whisper the same way.
     VOCAB: 'Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, '
          + 'Vercel, TypeScript, Deploy, Terminal, Debugging, Refactoring, Prompt, '
          + 'Skill, Subagent, Transcript, MCP, Token, Kontextfenster.',
@@ -65,17 +65,17 @@ const run = (cmd, args, opts = {}) => new Promise(resolve => {
   p.on('error', e => resolve({ code: -1, out: '', err: String(e) }))
 })
 
-// ── SSE: ein Kanal, über den Zustand, Text und Freigabe-Anfragen laufen ──
+// ── SSE: one channel carrying state, text and permission requests ────
 const clients = new Set()
 function push (event, data) {
   const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
   for (const res of clients) { try { res.write(frame) } catch {} }
 }
 
-// ── Sprachausgabe: satzweise erzeugt, im Browser abgespielt.
-//    Serverseitiges afplay wäre einfacher, aber dann hört das Mikrofon die
-//    eigene Stimme und die Echounterdrückung greift nicht — ohne das ist kein
-//    Freihandmodus möglich. ──
+// ── Speech output: synthesised sentence by sentence, played in the browser.
+//    Server-side afplay would be simpler, but then the microphone hears its
+//    own voice and echo cancellation does not apply, which rules out
+//    hands-free mode. ──
 const speech = { queue: [], busy: false, proc: null, seq: 0 }
 const audio = new Map()   // id -> { path, mime }
 
@@ -89,8 +89,8 @@ async function drainSpeech () {
   speech.busy = true
   const { text, conf } = speech.queue.shift()
   const id = `a${++speech.seq}`
-  // Container richtet sich nach dem Backend: piper und say liefern WAV,
-  // edge und ElevenLabs mp3. Die Endung entscheidet, was der Browser bekommt.
+  // The container follows the backend: piper and say produce WAV, edge and
+  // ElevenLabs produce mp3. The extension decides what the browser receives.
   const wav = conf.TTS_BACKEND === 'piper' || conf.TTS_BACKEND === 'say'
   const dir = await mkdtemp(join(tmpdir(), 'voicetts-'))
   const path = join(dir, wav ? 'a.wav' : 'a.mp3')
@@ -101,7 +101,7 @@ async function drainSpeech () {
   const done = async () => {
     speech.proc = null
     if (existsSync(path)) {
-      // Endung kann abweichen, wenn `auto` ein anderes Backend gewählt hat.
+      // The extension differs when `auto` picked a different backend.
       const mime = readFileSync(path, { encoding: null }).slice(0, 4).toString('binary').startsWith('RIFF')
         ? 'audio/wav' : 'audio/mpeg'
       audio.set(id, { path, dir, mime })
@@ -123,8 +123,8 @@ async function stopSpeech () {
   push('audio-stop', {})
 }
 
-// ── Whisper: Modell einmal laden statt pro Äußerung (~0,3 s je Aufruf). ──
-// `owned` merkt, ob wir den Server selbst gestartet haben — nur dann beenden wir ihn.
+// ── Whisper: load the model once rather than per utterance (~0.3 s a call). ──
+// `owned` records whether we started the server, and only then do we stop it.
 let whisper = { proc: null, port: PORT + 500, ready: false, owned: false }
 
 const whisperAlive = async (ms = 500) => {
@@ -136,16 +136,16 @@ const whisperAlive = async (ms = 500) => {
 
 async function startWhisper (conf) {
   if (whisper.ready || whisper.proc) return whisper.ready
-  // Läuft auf dem Port schon einer — etwa der Rest eines hart beendeten Laufs —,
-  // dann den benutzen. whisper-server bindet mit SO_REUSEPORT: ein zweiter
-  // bekäme den Port anstandslos dazu, der Kernel verteilte die Anfragen dann
-  // im Wechsel auf beide, und jede Instanz legt das halbe Gigabyte Modell
-  // noch einmal in den Speicher. Genau so sammeln sich Waisen an.
+  // If one already listens on the port - the remains of a hard-killed run, for
+  // instance - use it. whisper-server binds with SO_REUSEPORT: a second one
+  // would get the port without complaint, the kernel would alternate requests
+  // between them, and each instance holds another half gigabyte of model in
+  // memory. That is how orphans accumulate.
   if (await whisperAlive()) { whisper.ready = true; whisper.owned = false; return true }
   if (!existsSync(conf.MODEL)) return false
   whisper.proc = spawn('whisper-server', [
     '-m', conf.MODEL, '--host', '127.0.0.1', '--port', String(whisper.port),
-    '-t', '8', '--convert'   // nimmt webm direkt an, spart den ffmpeg-Schritt
+    '-t', '8', '--convert'   // accepts webm directly, which saves the ffmpeg step
   ], { stdio: 'ignore' })
   whisper.owned = true
   whisper.proc.on('close', () => { whisper.proc = null; whisper.ready = false; whisper.owned = false })
@@ -156,7 +156,7 @@ async function startWhisper (conf) {
   return false
 }
 
-// Nur den eigenen Kindprozess abräumen, nie einen fremden auf demselben Port.
+// Only clean up our own child, never a foreign one on the same port.
 function stopWhisper () {
   if (whisper.proc && whisper.owned) { try { whisper.proc.kill() } catch {} }
   whisper.proc = null; whisper.ready = false; whisper.owned = false
@@ -177,7 +177,7 @@ async function transcribe (buf, conf) {
     form.append('file', new Blob([buf]), 'in.webm')
     form.append('language', WHISPER_LANG[lang] || conf.WHISPER_LANG)
     form.append('response_format', 'text')
-    const vok = vokabular ?? conf.VOCAB
+    const vok = vocabulary ?? conf.VOCAB
     if (vok) form.append('prompt', vok)
     const r = await fetch(`http://127.0.0.1:${whisper.port}/inference`, { method: 'POST', body: form })
     if (r.ok) {
@@ -185,7 +185,7 @@ async function transcribe (buf, conf) {
       return JUNK.test(text) ? '' : text
     }
   }
-  // Fallback: der alte Weg über ffmpeg + whisper-cli, falls kein Server läuft.
+  // Fallback via ffmpeg + whisper-cli for when no server is running.
   const dir = await mkdtemp(join(tmpdir(), 'voiceui-'))
   try {
     const webm = join(dir, 'in.webm'), wav = join(dir, 'in.wav')
@@ -194,7 +194,7 @@ async function transcribe (buf, conf) {
     if (ff.code !== 0) throw new VoiceError('ffmpeg_failed', ff.err.trim().split('\n').pop() || 'unbekannt')
     const w = await run('whisper-cli', ['-m', conf.MODEL, '-l', WHISPER_LANG[lang] || conf.WHISPER_LANG,
       '-nt', '-np', '-t', '8',
-      ...((vokabular ?? conf.VOCAB) ? ['--prompt', vokabular ?? conf.VOCAB, '--carry-initial-prompt'] : []),
+      ...((vocabulary ?? conf.VOCAB) ? ['--prompt', vocabulary ?? conf.VOCAB, '--carry-initial-prompt'] : []),
       '-f', wav])
     if (w.code !== 0) throw new VoiceError('whisper_failed', w.err.trim().split('\n').pop() || 'unbekannt')
     const text = w.out.replace(/\n/g, ' ').trim()
@@ -202,9 +202,9 @@ async function transcribe (buf, conf) {
   } finally { await rm(dir, { recursive: true, force: true }) }
 }
 
-// Der Zweig steht in der Statusleiste. Billig genug, ihn nach jedem Zug neu
-// zu lesen: eine Datei, kein Prozess.
-function gitZweig () {
+// The branch shows in the status bar. Cheap enough to re-read after every
+// turn: one file, no process.
+function gitBranch () {
   try {
     let dir = CWD
     for (let i = 0; i < 12; i++) {
@@ -221,65 +221,67 @@ function gitZweig () {
   return ''
 }
 
-// ── Alte Verlaeufe ───────────────────────────────────────────────────
-// resume startet die Session zwar mit vollem Gedaechtnis, aber das Fenster
-// bleibt leer — man sieht nicht, worueber man geredet hat. Also den
-// Verlauf aus dem Transkript nachziehen. Die Auswertung selbst steht in
-// transkript.mjs, damit sie ohne laufenden Server pruefbar ist.
-const holeVerlauf = id => leseTranskript(id, { home: HOME, cwd: CWD })
+// ── Earlier conversations ────────────────────────────────────────────
+// resume restores the full memory of a session, but the window stays empty and
+// the user cannot see what was discussed. So pull the history out of the
+// transcript. The parsing itself lives in transcript.mjs so that it is
+// testable without a running server.
+const sessionTranscript = id => readTranscript(id, { home: HOME, cwd: CWD })
 
-// ── Die persistente Session ──────────────────────────────────────────
+// ── The persistent session ───────────────────────────────────────────
 let S = null   // { q, send, pending, sessionId }
-let permMode = null   // vom Nutzer gewählt; überstimmt die Konfig
+let permMode = null   // chosen by the user, overrides the config
 let modelOverride = null
 let lang = 'de'
-let effort = null   // null = wie vom Modell vorgegeben
-let vokabular = null       // null = der Vorgabewert aus der Konfig
-let stil = 'standard'      // wie Claude antwortet
-let stilText = ''          // frei formulierter Stil, wenn stil === 'eigen'
+let effort = null   // null = whatever the model defaults to
+let vocabulary = null       // null = the default from the config
+let style = 'standard'      // how Claude answers
+let styleText = ''          // free-form style, used when style === 'custom'
 
-// Antwortstile. Der Text wird an den Systemprompt gehaengt, gilt also fuer die
-// ganze Session — ein Wechsel startet sie neu, mit resume bleibt der Faden.
-const STILE = {
+// Response styles. The text is appended to the system prompt and therefore
+// applies to the whole session, so switching restarts it; resume keeps the
+// thread.
+const STYLES = {
   standard: '',
-  knapp: 'Fasse dich so kurz wie moeglich: ein bis zwei Saetze, keine Einleitung, keine Zusammenfassung am Ende.',
-  ausfuehrlich: 'Antworte ausfuehrlicher als noetig waere: nenne den Grund, eine Alternative und woran es scheitern koennte.',
-  erklaerend: 'Erklaere so, dass es jemand ohne Vorwissen versteht. Fachbegriffe beim ersten Auftauchen in einem Halbsatz erklaeren.',
-  sachlich: 'Antworte nuechtern und ohne Floskeln. Kein Lob, keine Einleitungssaetze, keine Rueckfragen aus Hoeflichkeit.',
-  locker: 'Antworte locker und gespraechig, so wie man es einem Kollegen im Nebenzimmer zurufen wuerde.',
-  sokratisch: 'Gib die Antwort nicht sofort. Stelle zuerst eine Rueckfrage, die den Kern trifft, und leite dann hin.'
+  concise: 'Fasse dich so kurz wie moeglich: ein bis zwei Saetze, keine Einleitung, keine Zusammenfassung am Ende.',
+  thorough: 'Antworte ausfuehrlicher als noetig waere: nenne den Grund, eine Alternative und woran es scheitern koennte.',
+  explanatory: 'Erklaere so, dass es jemand ohne Vorwissen versteht. Fachbegriffe beim ersten Auftauchen in einem Halbsatz erklaeren.',
+  factual: 'Antworte nuechtern und ohne Floskeln. Kein Lob, keine Einleitungssaetze, keine Rueckfragen aus Hoeflichkeit.',
+  casual: 'Antworte locker und gespraechig, so wie man es einem Kollegen im Nebenzimmer zurufen wuerde.',
+  socratic: 'Gib die Antwort nicht sofort. Stelle zuerst eine Rueckfrage, die den Kern trifft, und leite dann hin.'
 }
-const stilPrompt = () => stil === 'eigen' ? stilText.slice(0, 800) : (STILE[stil] || '')
+const stylePrompt = () => style === 'custom' ? styleText.slice(0, 800) : (STYLES[style] || '')
 
-// Was Claude Code im Terminal in der Statuszeile zeigt: Dauer, Tokens, Kosten,
-// Fuellstand des Kontextfensters. Ohne das ist nicht einzuschaetzen, ob eine
-// Session gleich an die Grenze laeuft.
-const leereStats = () => ({
+// What Claude Code shows in the terminal status line: duration, tokens, cost,
+// how full the context window is. Without it there is no telling whether a
+// session is about to hit its limit.
+const emptyStats = () => ({
   turns: 0, inTok: 0, outTok: 0, cacheRead: 0, cacheWrite: 0,
-  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null, zweig: '',
-  limits: null, modelle: {}
+  costUsd: 0, lastMs: 0, apiMs: 0, startedAt: Date.now(), ctx: null, branch: '',
+  limits: null, models: {}
 })
-let stats = leereStats()
+let stats = emptyStats()
 
-// Die Plangrenzen kosten einen Kontrollaufruf. Einmal pro Minute reicht:
-// die Fenster bewegen sich in Prozentpunkten, nicht in Sekunden.
-let limitCache = { wann: 0, wert: null }
-async function planGrenzen (frisch) {
+// The plan limits cost a control call. Once a minute is enough: the windows
+// move in percentage points, not in seconds.
+let limitCache = { at: 0, value: null }
+async function planLimits (fresh) {
   if (!S) return null
-  if (!frisch && Date.now() - limitCache.wann < 60000) return limitCache.wert
+  if (!fresh && Date.now() - limitCache.at < 60000) return limitCache.value
   try {
     const u = await S.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true })
     const f = u?.rate_limits || {}
-    const eins = x => x && x.utilization != null ? { pct: x.utilization, bis: x.resets_at || null } : null
-    limitCache = { wann: Date.now(), wert: u?.rate_limits_available
-      ? { abo: u.subscription_type || null, fuenfH: eins(f.five_hour), siebenT: eins(f.seven_day),
-          opus: eins(f.seven_day_opus), sonnet: eins(f.seven_day_sonnet) }
+    const win = x => x && x.utilization != null
+      ? { percent: x.utilization, resetsAt: x.resets_at || null } : null
+    limitCache = { at: Date.now(), value: u?.rate_limits_available
+      ? { plan: u.subscription_type || null, fiveHour: win(f.five_hour), sevenDay: win(f.seven_day),
+          opus: win(f.seven_day_opus), sonnet: win(f.seven_day_sonnet) }
       : null }
-  } catch { limitCache = { wann: Date.now(), wert: null } }
-  return limitCache.wert
+  } catch { limitCache = { at: Date.now(), value: null } }
+  return limitCache.value
 }
 
-function summeUsage (u) {
+function addUsage (u) {
   if (!u) return
   stats.inTok     += u.input_tokens || 0
   stats.outTok    += u.output_tokens || 0
@@ -287,11 +289,11 @@ function summeUsage (u) {
   stats.cacheWrite += u.cache_creation_input_tokens || 0
 }
 
-// Der Systemprompt ist je Session fest — eine Sprachumstellung braucht daher
-// eine neue Session. Für Deutsch gilt weiter der Text aus der Konfig.
+// The system prompt is fixed per session, so switching language needs a new
+// session. German keeps using the text from the config.
 const PROMPTS = {
-  en: 'Your reply will be read aloud. Answer in English, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs — describe them instead. If the answer truly needs code, just say what you changed and where.',
-  auto: 'Your reply will be read aloud. Answer in the same language the user just spoke, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs — describe them instead. If the answer truly needs code, just say what you changed and where.'
+  en: 'Your reply will be read aloud. Answer in English, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs - describe them instead. If the answer truly needs code, just say what you changed and where.',
+  auto: 'Your reply will be read aloud. Answer in the same language the user just spoke, in at most three or four sentences, in full sentences without markdown, code blocks or bullet lists. Do not read out file paths or URLs - describe them instead. If the answer truly needs code, just say what you changed and where.'
 }
 const WHISPER_LANG = { de: 'de', en: 'en', auto: 'auto' }
 
@@ -305,19 +307,19 @@ function startSession (conf, resumeId) {
     }
   }
 
-  const pending = new Map()   // Freigabe-Anfragen, auf die die UI antworten muss
-  // Dauerhafte Freigaben fuer diese Session: sonst wird man bei jedem
-  // einzelnen Bash-Aufruf neu gefragt, und man schaltet aus Verzweiflung auf
-  // "ohne jede Rueckfrage" — genau das Gegenteil von dem, was man will.
-  const dauerhaft = { werkzeuge: new Set(), genau: new Set() }
-  // Der Schluessel fuer "genau diesen Aufruf": Werkzeug plus das eine Feld,
-  // auf das es ankommt. Ein voller Objektvergleich traefe fast nie.
-  const genauKey = (name, input) => {
+  const pending = new Map()   // permission requests the UI still has to answer
+  // Standing permissions for this session. Without them every single Bash call
+  // asks again, and out of exasperation the user switches to "never ask" -
+  // exactly the opposite of what they want.
+  const standing = { tools: new Set(), exact: new Set() }
+  // The key for "exactly this call": tool plus the one field that matters. A
+  // full object comparison would almost never match.
+  const exactKey = (name, input) => {
     const feld = { Bash:'command', Read:'file_path', Write:'file_path', Edit:'file_path',
                    Glob:'pattern', Grep:'pattern', WebFetch:'url' }[name]
     return name + '\u0000' + (feld && input?.[feld] != null ? String(input[feld]) : JSON.stringify(input ?? {}))
   }
-  const subagents = new Set()  // laufende Task-Aufrufe, fuer die Uebersicht
+  const subagents = new Set()  // running subagent calls, for the overview
 
   const q = query({
     prompt: input(),
@@ -325,20 +327,20 @@ function startSession (conf, resumeId) {
       cwd: CWD,
       ...(resumeId ? { resume: resumeId } : {}),
       permissionMode: permMode || conf.PERMISSION_MODE,
-      // Erlaubt den Wechsel nach bypassPermissions an der laufenden Session.
-      // Ohne das lehnt die CLI ab und man muesste neu starten. Der Modus wird
-      // dadurch nicht aktiv — nur waehlbar.
+      // Allows switching to bypassPermissions on the running session. Without
+      // it the CLI refuses and the session has to restart. This does not
+      // activate the mode, it only makes it selectable.
       allowDangerouslySkipPermissions: true,
       ...(effort ? { effort } : {}),
       includePartialMessages: true,
       ...((modelOverride || conf.CLAUDE_MODEL) ? { model: modelOverride || conf.CLAUDE_MODEL } : {}),
       systemPrompt: { type: 'preset', preset: 'claude_code',
-                      append: [PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT, stilPrompt()]
+                      append: [PROMPTS[lang] || conf.VOICE_SYSTEM_PROMPT, stylePrompt()]
                                 .filter(Boolean).join(' ') },
-      // Hier hängt die ganze Freigabe-Mechanik dran: das Promise bleibt offen,
-      // bis der Nutzer in der UI entschieden hat.
+      // The whole permission mechanism hangs off this: the promise stays open
+      // until the user has decided in the UI.
       canUseTool: (toolName, toolInput, { signal }) => new Promise(resolve => {
-        if (dauerhaft.werkzeuge.has(toolName) || dauerhaft.genau.has(genauKey(toolName, toolInput))) {
+        if (standing.tools.has(toolName) || standing.exact.has(exactKey(toolName, toolInput))) {
           push('tool-auto', { tool: toolName })
           return resolve({ behavior: 'allow' })
         }
@@ -353,7 +355,7 @@ function startSession (conf, resumeId) {
   })
 
   S = {
-    q, pending, subagents, dauerhaft, genauKey,
+    q, pending, subagents, standing, exactKey,
     send (text) {
       inbox.push({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: null })
       if (wake) { wake(); wake = null }
@@ -367,38 +369,38 @@ function startSession (conf, resumeId) {
         if (msg.type === 'stream_event') {
           const ev = msg.event
           const d = ev?.delta
-          // Der Werkzeugname steht schon fest, bevor die Argumente durchgetropft
-          // sind — damit ist sofort sichtbar, woran gearbeitet wird.
+          // The tool name is known before the arguments have streamed in, so
+          // what is being worked on is visible immediately.
           if (ev?.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
             push('step', { id: ev.content_block.id, name: ev.content_block.name })
           }
-          // Langes Nachdenken ohne Werkzeugaufruf sieht sonst aus wie ein Hänger.
+          // Long thinking without a tool call otherwise looks like a hang.
           if (d?.type === 'thinking_delta' && d.thinking) push('think', { text: d.thinking })
           if (d?.type === 'text_delta' && d.text) {
             buf += d.text
             push('delta', { text: d.text })
-            // Sobald ein Satz fertig ist, geht er sofort in die Sprachausgabe.
+            // As soon as a sentence is complete it goes straight to speech.
             const cut = buf.lastIndexOf('. ') + 1 || buf.lastIndexOf('! ') + 1 || buf.lastIndexOf('? ') + 1
             if (cut > spoken) { enqueueSpeech(buf.slice(spoken, cut), conf); spoken = cut }
           }
         } else if (msg.type === 'assistant') {
-          // Unteragenten reden nicht mit dem Nutzer: ihr Text gehoert in die
-          // Uebersicht, nicht in den Gespraechsverlauf.
+          // Subagents do not talk to the user: their text belongs in the
+          // overview, not in the conversation.
           const parent = msg.parent_tool_use_id || null
           const blocks = msg.message?.content || []
           const text = blocks.filter(b => b.type === 'text').map(b => b.text).join(' ')
           if (text && !parent) push('message', { role: 'assistant', text })
           if (text && parent) push('subagent', { phase: 'text', id: parent, text: text.slice(0, 300) })
-          // Werkzeugaufrufe sichtbar machen — sonst ist eine lange Antwort eine
-          // Blackbox, in der minutenlang nichts passiert zu sein scheint.
+          // Surface tool calls, otherwise a long answer is a black box in
+          // which nothing appears to happen for minutes.
           for (const b of blocks) {
             if (b.type !== 'tool_use') continue
             push('tool', { phase: 'use', id: b.id, name: b.name, input: b.input, parent })
-            // Das Werkzeug heisst je nach Fassung Agent oder Task.
+            // Depending on the version the tool is called Agent or Task.
             if (b.name === 'Agent' || b.name === 'Task') {
               subagents.add(b.id)
               push('subagent', { phase: 'start', id: b.id,
-                                 typ: b.input?.subagent_type || 'general-purpose',
+                                 kind: b.input?.subagent_type || 'general-purpose',
                                  desc: b.input?.description || '' })
             }
           }
@@ -422,25 +424,25 @@ function startSession (conf, resumeId) {
           stats.lastMs = msg.duration_ms || 0
           stats.apiMs += msg.duration_api_ms || 0
           stats.costUsd += msg.total_cost_usd || 0
-          // Aufschluesselung je Modell: bei gemischten Zuegen sieht man sonst
-          // nicht, wo das Geld hingeht.
+          // Per-model breakdown: with mixed turns there is otherwise no
+          // telling where the money goes.
           for (const [name, u] of Object.entries(msg.modelUsage || {})) {
-            const m = stats.modelle[name] || (stats.modelle[name] = { ein: 0, aus: 0, kosten: 0 })
-            m.ein += (u.inputTokens || 0) + (u.cacheReadInputTokens || 0)
-            m.aus += u.outputTokens || 0
-            m.kosten += u.costUSD || 0
+            const m = stats.models[name] || (stats.models[name] = { in: 0, out: 0, costUsd: 0 })
+            m.in += (u.inputTokens || 0) + (u.cacheReadInputTokens || 0)
+            m.out += u.outputTokens || 0
+            m.costUsd += u.costUSD || 0
           }
-          summeUsage(msg.usage)
-          stats.zweig = gitZweig()
+          addUsage(msg.usage)
+          stats.branch = gitBranch()
           push('done', { subtype: msg.subtype, ms: msg.duration_ms })
           push('stats', stats)
-          // Der Fuellstand kostet einen Kontrollaufruf, deshalb erst nach dem
-          // Zug und in der billigen Variante.
-          planGrenzen().then(l => { stats.limits = l; push('stats', stats) }).catch(() => {})
+          // The fill level costs a control call, so ask after the turn and in
+          // the cheap variant.
+          planLimits().then(l => { stats.limits = l; push('stats', stats) }).catch(() => {})
           q.getContextUsage({ detail: 'summary' })
             .then(c => {
               stats.ctx = { tokens: c.totalTokens, max: c.maxTokens || c.rawMaxTokens,
-                            prozent: c.percentage, modell: c.model }
+                            percent: c.percentage, model: c.model }
               push('stats', stats)
             })
             .catch(() => {})
@@ -457,9 +459,9 @@ function startSession (conf, resumeId) {
   return S
 }
 
-// Neustart derselben Session. Der Systemprompt steht beim Start fest, also
-// braucht jede Aenderung daran eine neue Session — resume haelt den Faden.
-async function neuStarten (conf) {
+// Restart of the same session. The system prompt is fixed at startup, so any
+// change to it needs a new session; resume keeps the thread.
+async function restartSession (conf) {
   if (!S) return false
   const alte = S.sessionId
   await stopSpeech()
@@ -470,13 +472,13 @@ async function neuStarten (conf) {
 }
 
 // ── Git ──────────────────────────────────────────────────────────────
-// Ohne Shell: git bekommt seine Argumente als Feld, damit ein Zweigname mit
-// Semikolon nichts anrichten kann.
+// No shell: git gets its arguments as an array, so a branch name containing a
+// semicolon cannot do any damage.
 function git (args, ms = 20000) {
   return new Promise(resolve => {
     const proc = spawn('git', args, { cwd: CWD, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = '', err = ''
-    const stop = setTimeout(() => { proc.kill('SIGKILL'); resolve({ code: 124, out, err: 'Zeitüberschreitung' }) }, ms)
+    const stop = setTimeout(() => { proc.kill('SIGKILL'); resolve({ code: 124, out, err: 'timed out' }) }, ms)
     proc.stdout.on('data', d => { out += d })
     proc.stderr.on('data', d => { err += d })
     proc.on('close', code => { clearTimeout(stop); resolve({ code, out: out.trim(), err: err.trim() }) })
@@ -484,32 +486,32 @@ function git (args, ms = 20000) {
   })
 }
 
-async function gitLage () {
-  const zweig = gitZweig()
-  if (!zweig) return { repo: false }
-  const [zweige, kurz, oben] = await Promise.all([
+async function gitState () {
+  const branch = gitBranch()
+  if (!branch) return { repo: false }
+  const [branches, short, oben] = await Promise.all([
     git(['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', 'refs/heads/']),
     git(['status', '--porcelain']),
     git(['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'])
   ])
-  const [vor, zurueck] = (oben.code === 0 ? oben.out.split(/\s+/) : ['0', '0']).map(Number)
+  const [ahead, behind] = (oben.code === 0 ? oben.out.split(/\s+/) : ['0', '0']).map(Number)
   return {
-    repo: true, zweig,
-    zweige: zweige.code === 0 ? zweige.out.split('\n').filter(Boolean).slice(0, 40) : [],
-    geaendert: kurz.code === 0 && kurz.out ? kurz.out.split('\n').length : 0,
-    vor: vor || 0, zurueck: zurueck || 0,
-    hatOben: oben.code === 0
+    repo: true, branch,
+    branches: branches.code === 0 ? branches.out.split('\n').filter(Boolean).slice(0, 40) : [],
+    changed: short.code === 0 && short.out ? short.out.split('\n').length : 0,
+    ahead: ahead || 0, behind: behind || 0,
+    hasUpstream: oben.code === 0
   }
 }
 
-const ZWEIGNAME = /^[A-Za-z0-9._\/-]{1,120}$/
+const BRANCH_NAME = /^[A-Za-z0-9._\/-]{1,120}$/
 
 // ── HTTP ─────────────────────────────────────────────────────────────
 const body = req => new Promise((resolve, reject) => {
   const chunks = []; let n = 0
   req.on('data', c => {
     n += c.length
-    if (n > 40 * 1024 * 1024) { reject(new Error('zu groß')); req.destroy(); return }
+    if (n > 40 * 1024 * 1024) { reject(new Error('body too large')); req.destroy(); return }
     chunks.push(c)
   })
   req.on('end', () => resolve(Buffer.concat(chunks)))
@@ -521,9 +523,9 @@ const json = (res, code, obj) => {
   res.end(JSON.stringify(obj))
 }
 
-// Ohne das kann jede Webseite, die der Nutzer offen hat, diese Endpunkte
-// aufrufen — ein text/plain-POST löst keinen CORS-Preflight aus, und "nur
-// localhost" ist keine Hürde für den Browser des Nutzers selbst.
+// Without this any web page the user has open can call these endpoints: a
+// text/plain POST triggers no CORS preflight, and "localhost only" is no
+// obstacle to the user's own browser.
 function authorized (req, url) {
   const origin = req.headers.origin
   if (origin && origin !== ORIGIN) return false
@@ -537,25 +539,25 @@ const server = createServer(async (req, res) => {
     const conf = loadConf()
 
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      // Die Oberflaeche wird gebaut, nicht ausgeliefert: ein halbes Megabyte
-      // Buendel gehoert nicht in die Versionsverwaltung. claude-voice-ui baut
-      // sie beim Start, wenn sie fehlt oder veraltet ist.
+      // The interface is built, not committed: half a megabyte of bundle does
+      // not belong in version control. claude-voice-ui builds it at startup
+      // when it is missing or out of date.
       const gebaut = join(HERE, '..', 'app', 'dist', 'index.html')
       if (!existsSync(gebaut)) {
         res.writeHead(503, { 'content-type': 'text/html; charset=utf-8' })
         return res.end('<!doctype html><meta charset="utf-8">'
           + '<style>body{font:14px/1.6 system-ui;padding:30px;background:#0d0c0f;color:#f2f0ee}'
           + 'code{color:#8b8bf0}</style>'
-          + '<h3>Die Oberfläche ist noch nicht gebaut.</h3>'
+          + '<h3>The interface has not been built yet.</h3>'
           + '<p>Einmal <code>cd app &amp;&amp; npm install &amp;&amp; npm run build</code>, '
-          + 'oder <code>claude-voice-ui</code> neu starten — der baut selbst.</p>')
+          + 'or restart <code>claude-voice-ui</code>, which builds it itself.</p>')
       }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       return res.end(await readFile(gebaut))
     }
 
     if (url.pathname.startsWith('/api/') && !authorized(req, url)) {
-      return json(res, 403, { error: 'ungültiges oder fehlendes Token' })
+      return json(res, 403, { error: 'invalid or missing token' })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/events') {
@@ -598,7 +600,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/backends') {
       const r = await run(join(HOME, '.claude/bin/claude-say'), ['--backends-json'])
       try { return json(res, 200, JSON.parse(r.out)) }
-      catch { return json(res, 500, { error: 'backends nicht lesbar' }) }
+      catch { return json(res, 500, { error: 'backends unreadable' }) }
     }
 
     if (req.method === 'POST' && url.pathname === '/api/transcribe') {
@@ -611,7 +613,7 @@ const server = createServer(async (req, res) => {
       try {
         const said = await transcribe(await body(req), conf)
         return json(res, 200, { said })
-      } catch { return json(res, 200, { said: '' }) }   // Vorschau darf nie stören
+      } catch { return json(res, 200, { said: '' }) }   // a preview must never disrupt
     }
 
     if (req.method === 'POST' && url.pathname === '/api/say') {
@@ -627,58 +629,58 @@ const server = createServer(async (req, res) => {
       return json(res, 200, {
         sessions: list.map(x => ({
           id: x.sessionId,
-          titel: x.customTitle || x.summary || '(ohne Titel)',
-          zuletzt: x.lastModified,
-          aktuell: x.sessionId === S?.sessionId
+          title: x.customTitle || x.summary || '(ohne Titel)',
+          lastModified: x.lastModified,
+          current: x.sessionId === S?.sessionId
         }))
       })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/resume') {
       const { id } = JSON.parse((await body(req)).toString('utf8'))
-      if (!id) return json(res, 400, { error: 'keine Session-ID' })
+      if (!id) return json(res, 400, { error: 'missing session id' })
       await stopSpeech()
       try { S?.q.close() } catch {}
       S = null
-      stats = leereStats()
+      stats = emptyStats()
       startSession(conf, id)
-      return json(res, 200, { ok: true, resumed: id, verlauf: holeVerlauf(id) })
+      return json(res, 200, { ok: true, resumed: id, transcript: sessionTranscript(id) })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/transcript') {
       const id = url.searchParams.get('id')
-      if (!id) return json(res, 400, { error: 'keine Session-ID' })
-      const verlauf = holeVerlauf(id)
-      if (!verlauf) return json(res, 404, { error: 'kein Transkript zu dieser Session gefunden' })
-      return json(res, 200, { verlauf })
+      if (!id) return json(res, 400, { error: 'missing session id' })
+      const transcript = sessionTranscript(id)
+      if (!transcript) return json(res, 404, { error: 'no transcript found for this session' })
+      return json(res, 200, { transcript })
     }
 
-    // Das, was /status im Terminal zeigt, an einer Stelle gebuendelt.
+    // What /status shows in the terminal, gathered in one place.
     if (req.method === 'GET' && url.pathname === '/api/git') {
-      return json(res, 200, await gitLage())
+      return json(res, 200, await gitState())
     }
 
     if (req.method === 'POST' && url.pathname === '/api/git') {
-      const { aktion, name } = JSON.parse((await body(req)).toString('utf8'))
-      if (!gitZweig()) return json(res, 409, { error: 'kein Git-Repository' })
+      const { action, name } = JSON.parse((await body(req)).toString('utf8'))
+      if (!gitBranch()) return json(res, 409, { error: 'not a git repository' })
       let r
-      if (aktion === 'wechseln' || aktion === 'neu') {
-        if (!ZWEIGNAME.test(String(name || ''))) return json(res, 400, { error: 'ungültiger Zweigname' })
-        r = await git(aktion === 'neu' ? ['switch', '-c', name] : ['switch', name])
-      } else if (aktion === 'fetch') {
+      if (action === 'switch' || action === 'create') {
+        if (!BRANCH_NAME.test(String(name || ''))) return json(res, 400, { error: 'invalid branch name' })
+        r = await git(action === 'create' ? ['switch', '-c', name] : ['switch', name])
+      } else if (action === 'fetch') {
         r = await git(['fetch', '--all', '--prune'], 60000)
-      } else if (aktion === 'pull') {
-        // --ff-only: ein Merge-Konflikt mitten in einer Sprachsitzung waere
-        // nicht zu bedienen. Lieber sauber scheitern.
+      } else if (action === 'pull') {
+        // --ff-only: a merge conflict in the middle of a voice session would
+        // be impossible to operate. Better to fail cleanly.
         r = await git(['pull', '--ff-only'], 60000)
-      } else if (aktion === 'push') {
+      } else if (action === 'push') {
         r = await git(['push'], 60000)
       } else {
-        return json(res, 400, { error: 'unbekannte Aktion' })
+        return json(res, 400, { error: 'unknown action' })
       }
-      const lage = await gitLage()
-      if (r.code !== 0) return json(res, 200, { ok: false, meldung: r.err || r.out || 'fehlgeschlagen', lage })
-      return json(res, 200, { ok: true, meldung: r.out || r.err || '', lage })
+      const state = await gitState()
+      if (r.code !== 0) return json(res, 200, { ok: false, message: r.err || r.out || 'fehlgeschlagen', state })
+      return json(res, 200, { ok: true, message: r.out || r.err || '', state })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/status') {
@@ -688,109 +690,109 @@ const server = createServer(async (req, res) => {
           'claude-agent-sdk', 'package.json'), 'utf8')).version
       } catch {}
       return json(res, 200, {
-        arbeit: { cwd: CWD, zweig: gitZweig() },
+        work: { cwd: CWD, branch: gitBranch() },
         session: {
           id: S?.sessionId || null,
-          laeuft: !!S,
-          modell: S?.model || modelOverride || conf.CLAUDE_MODEL || null,
-          denktiefe: effort || null,
-          werkzeuge: permMode || conf.PERMISSION_MODE,
-          sprache: lang,
-          stil,
-          laufzeitMs: Date.now() - stats.startedAt
+          running: !!S,
+          model: S?.model || modelOverride || conf.CLAUDE_MODEL || null,
+          depth: effort || null,
+          tools: permMode || conf.PERMISSION_MODE,
+          language: lang,
+          style,
+          runtimeMs: Date.now() - stats.startedAt
         },
-        verbrauch: {
-          zuege: stats.turns, ein: stats.inTok, aus: stats.outTok,
-          cache: stats.cacheRead, kosten: stats.costUsd,
-          kontext: stats.ctx, modelle: stats.modelle
+        usage: {
+          turns: stats.turns, in: stats.inTok, out: stats.outTok,
+          cache: stats.cacheRead, costUsd: stats.costUsd,
+          ctx: stats.ctx, models: stats.models
         },
-        spracherkennung: {
-          modell: conf.MODEL,
-          vorhanden: existsSync(conf.MODEL),
-          server: whisper.ready ? (whisper.owned ? 'eigener Prozess' : 'fremder Prozess') : 'aus',
+        speechRecognition: {
+          model: conf.MODEL,
+          present: existsSync(conf.MODEL),
+          server: whisper.ready ? (whisper.owned ? 'own' : 'foreign') : 'off',
           port: whisper.port
         },
-        sprachausgabe: { backend: conf.TTS_BACKEND, stimme: conf.VOICE },
-        laufzeit: { node: process.version, sdk, pid: process.pid, port: PORT },
-        // Konto und Plangrenzen kommen aus der laufenden Session. Die
-        // Nutzungsabfrage ist im SDK ausdruecklich als instabil markiert,
-        // deshalb faellt sie im Fehlerfall einfach weg.
-        konto: S ? await S.q.accountInfo().catch(() => null) : null,
+        speechOutput: { backend: conf.TTS_BACKEND, voice: conf.VOICE },
+        runtime: { node: process.version, sdk, pid: process.pid, port: PORT },
+        // Account and plan limits come from the running session. The usage
+        // query is explicitly marked unstable in the SDK, so it simply drops
+        // out on error.
+        account: S ? await S.q.accountInfo().catch(() => null) : null,
         limits: S ? await S.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(
           { skipBehaviors: true }).catch(() => null) : null
       })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/stats') {
-      stats.zweig = gitZweig()
+      stats.branch = gitBranch()
       return json(res, 200, stats)
     }
 
-    // Die volle Aufschluesselung kostet Token-Zaehlaufrufe, daher nur auf Abruf.
+    // The full breakdown costs token-counting calls, so only on request.
     if (req.method === 'GET' && url.pathname === '/api/context') {
-      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      if (!S) return json(res, 409, { error: 'no running session' })
       try {
-        const c = await S.q.getContextUsage({ detail: url.searchParams.get('voll') ? 'full' : 'summary' })
+        const c = await S.q.getContextUsage({ detail: url.searchParams.get('full') ? 'full' : 'summary' })
         return json(res, 200, {
           tokens: c.totalTokens, max: c.maxTokens || c.rawMaxTokens,
-          prozent: c.percentage, modell: c.model,
-          kategorien: (c.categories || []).filter(k => k.tokens > 0)
+          percent: c.percentage, model: c.model,
+          categories: (c.categories || []).filter(k => k.tokens > 0)
             .map(k => ({ name: k.name, tokens: k.tokens }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
 
     if (req.method === 'GET' && url.pathname === '/api/mcp') {
-      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      if (!S) return json(res, 409, { error: 'no running session' })
       try {
-        const liste = await S.q.mcpServerStatus()
+        const list = await S.q.mcpServerStatus()
         return json(res, 200, {
-          server: liste.map(m => ({
+          servers: list.map(m => ({
             name: m.name, status: m.status, scope: m.scope || '',
             version: m.serverInfo?.version || '',
-            fehler: m.error || '',
-            werkzeuge: (m.tools || []).map(t => t.name)
+            error: m.error || '',
+            tools: (m.tools || []).map(t => t.name)
           }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
 
     if (req.method === 'GET' && url.pathname === '/api/models') {
-      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      if (!S) return json(res, 409, { error: 'no running session' })
       try {
-        const liste = await S.q.supportedModels()
+        const list = await S.q.supportedModels()
         return json(res, 200, {
-          modelle: liste.map(m => ({
-            id: m.value, name: m.displayName, beschreibung: m.description || '',
-            denktiefen: m.supportsEffort ? (m.supportedEffortLevels || []) : []
+          models: list.map(m => ({
+            id: m.value, name: m.displayName, description: m.description || '',
+            depths: m.supportsEffort ? (m.supportedEffortLevels || []) : []
           }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
 
-    // Vokabular, mit dem Whisper vorgespannt wird.
+    // Vocabulary that Whisper is primed with.
     if (req.method === 'GET' && url.pathname === '/api/vocab') {
-      return json(res, 200, { vokabular: vokabular ?? conf.VOCAB })
+      return json(res, 200, { vocabulary: vocabulary ?? conf.VOCAB })
     }
     if (req.method === 'POST' && url.pathname === '/api/vocab') {
       const { text } = JSON.parse((await body(req)).toString('utf8'))
-      vokabular = String(text ?? '').slice(0, 1200)
-      return json(res, 200, { ok: true, vokabular })
+      vocabulary = String(text ?? '').slice(0, 1200)
+      return json(res, 200, { ok: true, vocabulary })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/commands') {
-      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      if (!S) return json(res, 409, { error: 'no running session' })
       try {
-        const liste = await S.q.supportedCommands()
+        const list = await S.q.supportedCommands()
         return json(res, 200, {
-          befehle: liste.map(c => ({ name: c.name, beschreibung: c.description,
-                                     hinweis: c.argumentHint || '' }))
+          commands: list.map(c => ({ name: c.name, description: c.description,
+                                     hint: c.argumentHint || '' }))
         })
       } catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
 
     if (req.method === 'GET' && url.pathname === '/api/agents') {
-      if (!S) return json(res, 409, { error: 'keine laufende Session' })
+      if (!S) return json(res, 409, { error: 'no running session' })
       try { return json(res, 200, { agents: await S.q.supportedAgents() }) }
       catch (e) { return json(res, 500, { error: String(e?.message || e) }) }
     }
@@ -804,16 +806,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/style') {
-      const { stil: st, text } = JSON.parse((await body(req)).toString('utf8'))
-      if (st !== 'eigen' && !(st in STILE)) return json(res, 400, { error: 'unbekannter Stil' })
-      stil = st
-      if (st === 'eigen') stilText = String(text || '')
-      const restarted = await neuStarten(conf)
-      return json(res, 200, { ok: true, stil, restarted })
+      const { style: st, text } = JSON.parse((await body(req)).toString('utf8'))
+      if (st !== 'custom' && !(st in STYLES)) return json(res, 400, { error: 'unbekannter Stil' })
+      style = st
+      if (st === 'custom') styleText = String(text || '')
+      const restarted = await restartSession(conf)
+      return json(res, 200, { ok: true, style, restarted })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/style') {
-      return json(res, 200, { stil, text: stilText, stile: Object.keys(STILE) })
+      return json(res, 200, { style, text: styleText, styles: Object.keys(STYLES) })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/effort') {
@@ -821,36 +823,36 @@ const server = createServer(async (req, res) => {
       const allowed = [null, '', 'low', 'medium', 'high', 'xhigh', 'max']
       if (!allowed.includes(e)) return json(res, 400, { error: 'unbekannte Stufe' })
       effort = e || null
-      // Die Denktiefe wird beim Sessionstart gesetzt; es gibt kein setEffort.
+      // Thinking depth is set at session start; there is no setEffort.
       let restarted = false
       if (S) { await stopSpeech(); try { S.q.close() } catch {}; S = null; restarted = true }
       return json(res, 200, { ok: true, effort, restarted })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/language') {
-      const { lang: l } = JSON.parse((await body(req)).toString('utf8'))
-      if (!WHISPER_LANG[l]) return json(res, 400, { error: 'unbekannte Sprache' })
-      lang = l
-      // Die Erkennung stellt sofort um; der Antwortsprache-Prompt hängt an der
-      // Session, also muss die neu starten. Mit resume behaelt sie den Faden —
-      // vorher war das Gespraech nach einem Sprachwechsel weg.
-      const restarted = await neuStarten(conf)
+      const { language } = JSON.parse((await body(req)).toString('utf8'))
+      if (!WHISPER_LANG[language]) return json(res, 400, { error: 'unknown language' })
+      lang = language
+      // Recognition switches immediately; the answer-language prompt hangs off
+      // the session, so that has to restart. resume keeps the thread, which is
+      // what stops a language switch from discarding the conversation.
+      const restarted = await restartSession(conf)
       return json(res, 200, { ok: true, lang, restarted })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission-mode') {
       const { mode } = JSON.parse((await body(req)).toString('utf8'))
       const allowed = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']
-      if (!allowed.includes(mode)) return json(res, 400, { error: 'unbekannter Modus' })
+      if (!allowed.includes(mode)) return json(res, 400, { error: 'unknown permission mode' })
       permMode = mode
       let restarted = false
-      // Läuft schon eine Session, gilt es sofort — sonst beim nächsten Start.
+      // With a session running it applies immediately, otherwise at next start.
       if (S) {
         try { await S.q.setPermissionMode(mode) }
         catch {
-          // bypassPermissions laesst sich an einer laufenden Session nicht
-          // nachtraeglich setzen; die CLI muss dafuer neu starten. Mit resume
-          // behaelt die neue Session den ganzen bisherigen Faden.
+          // bypassPermissions cannot be set on a running session; the CLI has
+          // to restart for it. With resume the new session keeps the entire
+          // thread so far.
           const alte = S.sessionId
           await stopSpeech()
           try { S.q.close() } catch {}
@@ -864,38 +866,38 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/api/permission') {
-      const { id, behavior, message, umfang, tool, input } = JSON.parse((await body(req)).toString('utf8'))
+      const { id, behavior, message, scope, tool, input } = JSON.parse((await body(req)).toString('utf8'))
       const resolve = S?.pending.get(id)
       if (!resolve) return json(res, 404, { error: 'unbekannte Anfrage' })
       S.pending.delete(id)
-      // Der Umfang gilt nur fuer diese Session. Etwas dauerhaft auf die Platte
-      // zu schreiben waere eine Entscheidung mit laengerer Reichweite, als ein
-      // Klick in einem Sprachfenster tragen sollte.
-      if (behavior === 'allow' && umfang === 'werkzeug' && tool) S.dauerhaft.werkzeuge.add(tool)
-      if (behavior === 'allow' && umfang === 'genau' && tool) S.dauerhaft.genau.add(S.genauKey(tool, input))
+      // The scope applies to this session only. Writing something standing to
+      // disk would be a decision of longer reach than a click in a voice window
+      // should carry.
+      if (behavior === 'allow' && scope === 'tool' && tool) S.standing.tools.add(tool)
+      if (behavior === 'allow' && scope === 'exact' && tool) S.standing.exact.add(S.exactKey(tool, input))
       resolve(behavior === 'allow'
         ? { behavior: 'allow' }
         : { behavior: 'deny', message: message || 'Vom Nutzer abgelehnt.' })
       return json(res, 200, { ok: true,
-        regeln: { werkzeuge: [...S.dauerhaft.werkzeuge], genau: S.dauerhaft.genau.size } })
+        rules: { tools: [...S.standing.tools], exact: S.standing.exact.size } })
     }
 
-    // Freigaberegeln ansehen und zuruecknehmen.
+    // Inspect and withdraw permission rules.
     if (req.method === 'GET' && url.pathname === '/api/permission-rules') {
-      if (!S) return json(res, 200, { werkzeuge: [], genau: [] })
+      if (!S) return json(res, 200, { tools: [], exact: [] })
       return json(res, 200, {
-        werkzeuge: [...S.dauerhaft.werkzeuge],
-        genau: [...S.dauerhaft.genau].map(k => k.split('\u0000'))
+        tools: [...S.standing.tools],
+        exact: [...S.standing.exact].map(k => k.split('\u0000'))
       })
     }
     if (req.method === 'POST' && url.pathname === '/api/permission-rules') {
-      if (S) { S.dauerhaft.werkzeuge.clear(); S.dauerhaft.genau.clear() }
+      if (S) { S.standing.tools.clear(); S.standing.exact.clear() }
       return json(res, 200, { ok: true })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/interrupt') {
       stopSpeech()
-      // Offene Freigaben mit auflösen, sonst hängt der Turn am Promise.
+      // Resolve open permissions as well, or the turn hangs on the promise.
       for (const [id, resolve] of S?.pending ?? []) {
         S.pending.delete(id)
         resolve({ behavior: 'deny', message: 'Abgebrochen.' })
@@ -909,7 +911,7 @@ const server = createServer(async (req, res) => {
       stopSpeech()
       try { S?.q.close() } catch {}
       S = null
-      stats = leereStats()
+      stats = emptyStats()
       push('stats', stats)
       return json(res, 200, { ok: true })
     }
@@ -929,12 +931,12 @@ const server = createServer(async (req, res) => {
   }
 })
 
-// Ohne die Signal-Handler ueberlebt whisper-server jedes Ctrl-C und jedes kill
-// und haelt Port und Modellspeicher weiter — der Fall, der die Waisen erzeugt hat.
-// Stirbt der Elternprozess hart — die Desktop-Schale abgeschossen, das
-// Terminal zugeklappt —, bekommen wir kein Signal, und der Server lebt als
-// Waise weiter. Mitsamt whisper-server und dessen halbem Gigabyte Modell.
-// Also selbst nachsehen: wird 1 unser Elternteil, sind wir verwaist.
+// Without the signal handlers whisper-server survives every Ctrl-C and every
+// kill and holds on to the port and the model memory, which is what produces
+// orphans. When the parent dies hard - the desktop shell killed, the terminal
+// closed - no signal arrives and this server lives on as an orphan, together
+// with whisper-server and its half gigabyte of model. So check for it: once 1
+// becomes our parent, we have been orphaned.
 if (process.ppid !== 1) {
   const wache = setInterval(() => {
     if (process.ppid === 1) {
@@ -951,6 +953,6 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 server.listen(PORT, '127.0.0.1', () => {
-  // Das Token steht in der URL — nur gleichherkünftige Seiten können es lesen.
+  // The token sits in the URL, and only same-origin pages can read it.
   console.log(`${ORIGIN}/?token=${TOKEN}`)
 })

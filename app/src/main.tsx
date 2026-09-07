@@ -2,11 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './styles.css'
-import { verbindeSchale } from './lib/schale.ts'
+import { connectShell } from './lib/shell.ts'
 
-// Muss vor dem ersten Zeichnen laufen: die Schale putzt das Token aus der URL,
-// und api.ts liest es beim Laden des Moduls.
-verbindeSchale()
+// Runs before the first render: the shell strips the token from the URL, and
+// lib/api.ts reads it while the module loads.
+connectShell()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>

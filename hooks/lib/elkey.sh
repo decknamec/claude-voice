@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Löst den ElevenLabs-Key auf und setzt ELEVENLABS_API_KEY + EL_KEY_SOURCE.
-# Bewusst über eine Variable statt stdout — so landet der Key in keinem Log und
-# in keiner Prozessliste.
+# Resolves the ElevenLabs key and sets ELEVENLABS_API_KEY + EL_KEY_SOURCE.
+# Deliberately through a variable rather than stdout, so the key lands in no log
+# and in no process list.
 #
-# Reihenfolge: Umgebungsvariable > ~/.claude/voice.env > 1Password > Schlüsselbund.
-# Die Umgebungsvariable zuerst, damit langlebige Prozesse (Loop, UI) einmal
-# auflösen und ihre Kindprozesse den `op read` nicht jedes Mal neu zahlen —
-# das kostet sonst 1 bis 4 Sekunden vor jedem gesprochenen Satz.
-# Immer definiert, damit `set -u` beim Lesen nicht aussteigt.
+# Order: environment variable > ~/.claude/voice.env > 1Password > keychain.
+# The environment variable comes first so that long-lived processes (loop, UI)
+# resolve once and their children do not pay for `op read` every time, which
+# otherwise costs 1 to 4 seconds before every spoken sentence.
+# Always defined, so that `set -u` does not bail out on a read.
 EL_KEY_SOURCE="${EL_KEY_SOURCE:-}"
 
 el_resolve_key() {
   if [ -n "${ELEVENLABS_API_KEY:-}" ]; then EL_KEY_SOURCE="Umgebungsvariable"; return 0; fi
 
-  # Einfachster Weg: Datei mit KEY=WERT, chmod 600, liegt außerhalb des Repos.
-  # Bequem, aber im Klartext auf der Platte — schwächer als Schlüsselbund/1Password.
+  # Simplest route: a file with KEY=VALUE, chmod 600, outside the repo.
+  # Convenient, but in cleartext on disk, which is weaker than keychain or
+  # 1Password.
   local envf="$HOME/.claude/voice.env"
   if [ -f "$envf" ]; then
     local v; v=$(grep -m1 '^ELEVENLABS_API_KEY=' "$envf" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"'[:space:]')

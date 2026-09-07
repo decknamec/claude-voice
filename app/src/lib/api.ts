@@ -1,102 +1,111 @@
 import type {
-  Backend, Befehl, GitLage, McpServer, ModellInfo, SitzungKurz,
-  StatusBericht, Stats, VerlaufBlock
+  GitState, McpServer, ModelInfo, SessionSummary, SlashCommand,
+  SpeechBackend, Stats, StatusReport, TranscriptBlock
 } from './types.ts'
 
-/** Das Token steht in der URL, aber in der Desktop-Schale putzen wir es dort
- *  weg — und ein Neuladen (Cmd-R) hätte danach keins mehr. Also einmal in den
- *  Sitzungsspeicher legen, der genau so lange lebt wie das Fenster. */
-function holToken (): string {
-  const ausUrl = new URLSearchParams(location.search).get('token')
-  if (ausUrl) {
-    try { sessionStorage.setItem('cv-token', ausUrl) } catch { /* privater Modus */ }
-    return ausUrl
+/**
+ * The token arrives in the URL, but the desktop shell strips it from there, so
+ * a reload would be left without one. Session storage lives exactly as long as
+ * the window does.
+ */
+function readToken (): string {
+  const fromUrl = new URLSearchParams(location.search).get('token')
+  if (fromUrl) {
+    try { sessionStorage.setItem('cv-token', fromUrl) } catch { /* private mode */ }
+    return fromUrl
   }
   try { return sessionStorage.getItem('cv-token') ?? '' } catch { return '' }
 }
 
-export const TOKEN = holToken()
+export const TOKEN = readToken()
 
-export class ApiFehler extends Error {
+export class ApiError extends Error {
   code: string
-  constructor (message: string, code = 'unbekannt') { super(message); this.code = code }
+  constructor (message: string, code = 'unknown') { super(message); this.code = code }
 }
 
-async function auswerten<T> (r: Response): Promise<T> {
+async function unwrap<T> (r: Response): Promise<T> {
   const text = await r.text()
-  let daten: unknown
-  try { daten = text ? JSON.parse(text) : {} } catch { daten = {} }
+  let data: unknown
+  try { data = text ? JSON.parse(text) : {} } catch { data = {} }
   if (!r.ok) {
-    const d = daten as { error?: string; code?: string }
-    throw new ApiFehler(d.error || `HTTP ${r.status}`, d.code || String(r.status))
+    const d = data as { error?: string; code?: string }
+    throw new ApiError(d.error || `HTTP ${r.status}`, d.code || String(r.status))
   }
-  return daten as T
+  return data as T
 }
 
-export async function hol<T> (pfad: string): Promise<T> {
-  const r = await fetch(pfad, { headers: { 'x-voice-token': TOKEN } })
-    .catch(() => { throw new ApiFehler('Server nicht erreichbar', 'offline') })
-  return auswerten<T>(r)
+export async function get<T> (path: string): Promise<T> {
+  const r = await fetch(path, { headers: { 'x-voice-token': TOKEN } })
+    .catch(() => { throw new ApiError('Server unreachable', 'offline') })
+  return unwrap<T>(r)
 }
 
-export async function schick<T> (pfad: string, body: unknown): Promise<T> {
-  const r = await fetch(pfad, {
+export async function post<T> (path: string, body: unknown): Promise<T> {
+  const r = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-voice-token': TOKEN },
     body: JSON.stringify(body ?? {})
-  }).catch(() => { throw new ApiFehler('Server nicht erreichbar', 'offline') })
-  return auswerten<T>(r)
+  }).catch(() => { throw new ApiError('Server unreachable', 'offline') })
+  return unwrap<T>(r)
 }
 
-/** Rohdaten hochladen, etwa die Aufnahme zur Transkription. */
-export async function schickRoh<T> (pfad: string, blob: Blob): Promise<T> {
-  const r = await fetch(pfad, {
+/** Raw upload, used for the recording that goes to transcription. */
+export async function postBlob<T> (path: string, blob: Blob): Promise<T> {
+  const r = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/octet-stream', 'x-voice-token': TOKEN },
     body: blob
-  }).catch(() => { throw new ApiFehler('Server nicht erreichbar', 'offline') })
-  return auswerten<T>(r)
+  }).catch(() => { throw new ApiError('Server unreachable', 'offline') })
+  return unwrap<T>(r)
 }
 
 export const api = {
-  config: () => hol<{
+  config: () => get<{
     tts: string; voice: string; model: string | null; permissionMode: string
-    session: string | null; cwd: string; lang: string
+    session: string | null; cwd: string; language: string
     modelOverride: string | null; effort: string | null
   }>('/api/config'),
-  backends: () => hol<{ backends: Backend[]; active: string }>('/api/backends'),
-  stats: () => hol<Stats>('/api/stats'),
-  status: () => hol<StatusBericht>('/api/status'),
-  kontext: (voll?: boolean) => hol<{
-    tokens: number; max: number; prozent: number; modell: string
-    kategorien: { name: string; tokens: number }[]
-  }>('/api/context' + (voll ? '?voll=1' : '')),
-  mcp: () => hol<{ server: McpServer[] }>('/api/mcp'),
-  befehle: () => hol<{ befehle: Befehl[] }>('/api/commands'),
-  modelle: () => hol<{ modelle: ModellInfo[] }>('/api/models'),
-  sitzungen: () => hol<{ sessions: SitzungKurz[] }>('/api/sessions'),
-  vokabular: () => hol<{ vokabular: string }>('/api/vocab'),
-  git: () => hol<GitLage>('/api/git'),
+  backends: () => get<{ backends: SpeechBackend[]; active: string }>('/api/backends'),
+  stats: () => get<Stats>('/api/stats'),
+  status: () => get<StatusReport>('/api/status'),
+  context: (full?: boolean) => get<{
+    tokens: number; max: number; percent: number; model: string
+    categories: { name: string; tokens: number }[]
+  }>('/api/context' + (full ? '?full=1' : '')),
+  mcp: () => get<{ servers: McpServer[] }>('/api/mcp'),
+  commands: () => get<{ commands: SlashCommand[] }>('/api/commands'),
+  models: () => get<{ models: ModelInfo[] }>('/api/models'),
+  sessions: () => get<{ sessions: SessionSummary[] }>('/api/sessions'),
+  vocabulary: () => get<{ vocabulary: string }>('/api/vocab'),
+  git: () => get<GitState>('/api/git'),
 
-  transkribieren: (blob: Blob) => schickRoh<{ said: string; ms: number }>('/api/transcribe', blob),
-  sagen: (text: string) => schick<{ ok: boolean }>('/api/say', { text }),
-  vorschau: (blob: Blob) => schickRoh<{ said: string }>('/api/preview', blob),
-  abbrechen: () => schick<{ ok: boolean }>('/api/interrupt', {}),
-  zuruecksetzen: () => schick<{ ok: boolean }>('/api/reset', {}),
-  beenden: () => schick<{ ok: boolean }>('/api/shutdown', {}),
-  fortsetzen: (id: string) => schick<{ ok: boolean; verlauf: VerlaufBlock[] | null }>('/api/resume', { id }),
+  transcribe: (blob: Blob) => postBlob<{ said: string; ms: number }>('/api/transcribe', blob),
+  say: (text: string) => post<{ ok: boolean }>('/api/say', { text }),
+  preview: (blob: Blob) => postBlob<{ said: string }>('/api/preview', blob),
+  interrupt: () => post<{ ok: boolean }>('/api/interrupt', {}),
+  reset: () => post<{ ok: boolean }>('/api/reset', {}),
+  shutdown: () => post<{ ok: boolean }>('/api/shutdown', {}),
+  resume: (id: string) =>
+    post<{ ok: boolean; transcript: TranscriptBlock[] | null }>('/api/resume', { id }),
 
-  freigabe: (b: { id: string; behavior: 'allow' | 'deny'; umfang?: 'genau' | 'werkzeug'
-                  tool?: string; input?: unknown }) =>
-    schick<{ ok: boolean }>('/api/permission', b),
-  modus: (mode: string) => schick<{ ok: boolean; applied: boolean; restarted: boolean }>('/api/permission-mode', { mode }),
-  modell: (model: string) => schick<{ ok: boolean; restarted: boolean }>('/api/model', { model }),
-  sprache: (lang: string) => schick<{ ok: boolean; restarted: boolean }>('/api/language', { lang }),
-  denktiefe: (effort: string | null) => schick<{ ok: boolean; restarted: boolean }>('/api/effort', { effort }),
-  stil: (stil: string, text?: string) => schick<{ ok: boolean; restarted: boolean }>('/api/style', { stil, text }),
-  setzeVokabular: (text: string) => schick<{ ok: boolean }>('/api/vocab', { text }),
-  gitTun: (aktion: string, name?: string) =>
-    schick<{ ok: boolean; meldung: string; lage: GitLage }>('/api/git', { aktion, name }),
+  permission: (body: {
+    id: string; behavior: 'allow' | 'deny'; scope?: 'exact' | 'tool'
+    tool?: string; input?: unknown
+  }) => post<{ ok: boolean }>('/api/permission', body),
+  setMode: (mode: string) =>
+    post<{ ok: boolean; applied: boolean; restarted: boolean }>('/api/permission-mode', { mode }),
+  setModel: (model: string) =>
+    post<{ ok: boolean; restarted: boolean }>('/api/model', { model }),
+  setLanguage: (language: string) =>
+    post<{ ok: boolean; restarted: boolean }>('/api/language', { language }),
+  setDepth: (effort: string | null) =>
+    post<{ ok: boolean; restarted: boolean }>('/api/effort', { effort }),
+  setStyle: (style: string, text?: string) =>
+    post<{ ok: boolean; restarted: boolean }>('/api/style', { style, text }),
+  setVocabulary: (text: string) => post<{ ok: boolean }>('/api/vocab', { text }),
+  gitRun: (action: string, name?: string) =>
+    post<{ ok: boolean; message: string; state: GitState }>('/api/git', { action, name }),
 
   audioUrl: (id: string) => `/api/audio/${id}?token=${encodeURIComponent(TOKEN)}`
 }

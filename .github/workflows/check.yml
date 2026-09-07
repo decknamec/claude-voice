@@ -1,12 +1,12 @@
-name: Prüfen
+name: Check
 
-# Der eigentliche Zweck: beweisen, dass ein frischer Klon baut. Auf dem
-# Entwicklungsrechner liegen node_modules, dist, das Whisper-Modell und die
-# Rust-Toolchain schon herum — dort läuft alles, auch wenn im Repo etwas fehlt.
+# The actual purpose: prove that a fresh clone builds. The development machine
+# already has node_modules, dist, the Whisper model and the Rust toolchain lying
+# around, so everything runs there even when something is missing from the repo.
 #
-# Was hier nicht geprüft werden kann: alles, was ein Mikrofon, das 547 MB große
-# Whisper-Modell oder eine angemeldete claude-CLI braucht. Diese Grenze ist
-# echt, und ein grüner Haken hier heißt nicht, dass gesprochen werden kann.
+# What cannot be checked here: anything needing a microphone, the 547 MB Whisper
+# model or a signed-in claude CLI. That boundary is real, and a green tick here
+# does not mean speech works.
 
 on:
   push:
@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  oberflaeche:
-    name: Oberfläche und Server
+  interface:
+    name: Interface and server
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -33,10 +33,10 @@ jobs:
             app/package-lock.json
             ui/package-lock.json
 
-      # Der Rauchtest ruft Werkzeuge auf, die auf dem Runner nicht liegen.
-      # jq ist vorinstalliert, sox und whisper-cpp nicht — die braucht er aber
-      # auch nicht, er prüft nur Skripte und Dateien.
-      - name: Abhängigkeiten
+      # The smoke test calls tools the runner does not have. jq is
+      # preinstalled, sox and whisper-cpp are not, and it does not need them:
+      # it only inspects scripts and files.
+      - name: Dependencies
         run: |
           npm ci --prefix app
           npm ci --prefix ui
@@ -45,33 +45,33 @@ jobs:
         run: npx --no-install tsc -b --noEmit
         working-directory: app
 
-      - name: Bauen
+      - name: Build
         run: npx --no-install vite build
         working-directory: app
 
-      - name: Einheitentests
+      - name: Unit tests
         run: |
-          node --test tests/einheiten.test.mjs
-          cd app && node --test src/logik.test.ts
+          node --test tests/units.test.mjs
+          cd app && node --test src/logic.test.ts
 
-      - name: Rauchtest
+      - name: Smoke test
         run: tests/smoke.sh
 
-      # Der Bau muss eine einzige Datei sein, die zur Laufzeit nichts nachlädt.
-      # Die Seite hält das Sitzungs-Token und darf Claude mit Werkzeugzugriff
-      # steuern — da gehört kein fremdes Skript hinein.
-      - name: Bau ist in sich geschlossen
+      # The build has to be a single file that fetches nothing at runtime. The
+      # page holds the session token and can drive Claude with tool access, so
+      # no foreign script belongs in it.
+      - name: Build is self-contained
         run: |
           n=$(ls app/dist | wc -l | tr -d ' ')
-          [ "$n" = 1 ] || { echo "dist hat $n Dateien, erwartet: 1"; ls -la app/dist; exit 1; }
+          [ "$n" = 1 ] || { echo "dist has $n files, expected 1"; ls -la app/dist; exit 1; }
           if grep -qE '<(script|link)[^>]+(src|href)="https?:' app/dist/index.html; then
-            echo "Der Bau lädt etwas von außen nach:"
+            echo "The build pulls something in from outside:"
             grep -oE '<(script|link)[^>]+(src|href)="https?:[^"]*' app/dist/index.html
             exit 1
           fi
 
-  schale:
-    name: Desktop-Schale
+  shell:
+    name: Desktop shell
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -90,19 +90,19 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
-      - name: Abhängigkeiten
+      - name: Dependencies
         run: npm ci --prefix desktop
 
-      # Der frontendDist-Ordner muss existieren, sonst bricht tauri-build ab.
-      # Das Fenster lädt ohnehin den lokalen Server, nicht diese Datei.
-      - name: Rust prüfen
+      # The frontendDist folder has to exist or tauri-build aborts. The window
+      # loads the local server anyway, not that file.
+      - name: Lint Rust
         run: cargo clippy --all-targets -- -D warnings
         working-directory: desktop/src-tauri
 
-      - name: Rust-Tests
+      - name: Rust tests
         run: cargo test
         working-directory: desktop/src-tauri
 
-      - name: Formatierung
+      - name: Formatting
         run: cargo fmt --check
         working-directory: desktop/src-tauri

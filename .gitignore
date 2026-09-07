@@ -1,4 +1,4 @@
-# Whisper-Modelle (mehrere hundert MB) — holt install.sh
+# Whisper-Modelle (mehrere hundert MB) - holt install.sh
 whisper-models/
 *.bin
 # Laufzeitkram
@@ -10,15 +10,15 @@ voice-enabled
 voice-loop.lock
 voice-locks/
 .elevenlabs-voice
-# Keys niemals ins Repo — die echte Datei liegt ohnehin in ~/.claude/
+# Never commit keys - the real file lives in ~/.claude/ anyway
 *.env
 voice.env
-# Persönliche Konfiguration — im Repo liegen nur die .example-Dateien
+# Personal configuration - the repo carries only the .example files
 conf/voice.conf
 conf/voice-loop.conf
 node_modules/
 
-# Der React-Bau ist ein Ergebnis, keine Quelle.
+# The React build is a result, not a source.
 app/dist/
 app/node_modules/
 desktop/node_modules/

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Freisprech-Loop für Claude Code: Mikro -> whisper.cpp (lokal) -> claude -p -> say.
+# Hands-free loop for Claude Code: mic -> whisper.cpp (local) -> agent -> say.
 #
 #   claude-voice              neue Session im aktuellen Verzeichnis
 #   claude-voice --last       letzte Voice-Session fortsetzen
@@ -13,19 +13,20 @@ MODEL="$HOME/.claude/whisper-models/ggml-large-v3-turbo-q5_0.bin"
 WHISPER_LANG=de
 VOICE=Anna
 RATE=190
-MAX_CHARS=900          # längere Antworten als beim Hook — hier ist Vorlesen der Zweck
-SILENCE_SEC=1.6        # so lange Stille beendet die Aufnahme
-SILENCE_THRESH=2%      # Pegel, ab dem es als Sprache zählt
-MAX_REC=90             # harte Obergrenze pro Aufnahme (Sekunden)
-MIN_DUR=0.4            # kürzere Aufnahmen sind Husten, kein Satz
+MAX_CHARS=900          # longer than the hook allows: reading aloud is the point here
+SILENCE_SEC=1.6        # this much silence ends the recording
+SILENCE_THRESH=2%      # level from which it counts as speech
+MAX_REC=90             # hard ceiling per recording, in seconds
+MIN_DUR=0.4            # anything shorter is a cough, not a sentence
 PERMISSION_MODE=acceptEdits
-CLAUDE_MODEL=""          # leer = dein Default (opus[1m]). Für spürbar weniger
-                         # Wartezeit: CLAUDE_MODEL=claude-sonnet-5
-# Ohne das antwortet Claude in Markdown mit Codeblöcken — die filtert speakable_text
-# zwar raus, aber übrig bleibt Stückwerk. Besser gleich sprechbar antworten lassen.
+CLAUDE_MODEL=""          # empty = your default (opus[1m]). For noticeably less
+                         # waiting: CLAUDE_MODEL=claude-sonnet-5
+# Without this Claude answers in markdown with code blocks. speakable_text does
+# filter those out, but what remains is fragments. Better to ask for speakable
+# answers in the first place.
 VOICE_SYSTEM_PROMPT="Deine Antwort wird per Sprachausgabe vorgelesen. Antworte auf Deutsch, in höchstens drei bis vier Sätzen, in ganzen Sätzen ohne Markdown, ohne Codeblöcke, ohne Aufzählungen. Lies keine Dateipfade oder URLs vor, beschreibe sie stattdessen. Wenn die Antwort zwingend Code braucht, sag nur, was du geändert hast und wo."
-# Whisper auf Fachvokabular vorspannen — ohne das wird aus "Stop Hook" gern
-# "Stopthook". In ~/.claude/voice-loop.conf überschreibbar.
+# Prime Whisper with domain vocabulary: without it "Stop Hook" comes back as
+# "Stopthook". Overridable in ~/.claude/voice-loop.conf.
 VOCAB="Claude Code, Hook, Repo, Commit, Branch, Pull Request, Merge, Supabase, Vercel, TypeScript, Deploy, Terminal, Debugging, Refactoring, Prompt, Skill, Subagent, Transcript."
 # shellcheck disable=SC1090
 [ -f "$HOME/.claude/voice.conf" ] && source "$HOME/.claude/voice.conf"
@@ -35,16 +36,16 @@ source "$HOME/.claude/hooks/lib/speakable.sh"
 source "$HOME/.claude/hooks/lib/voicelock.sh"
 source "$HOME/.claude/hooks/lib/elkey.sh"
 
-# Einmal auflösen und vererben: sonst zahlt jeder gesprochene Satz den
-# 1Password-Zugriff erneut.
+# Resolve once and inherit: otherwise every spoken sentence pays for the
+# 1Password lookup again.
 el_resolve_key && export ELEVENLABS_API_KEY
 
 SESSION_FILE="$HOME/.claude/voice-loop-session"
 WORK=$(mktemp -d)
 WAV="$WORK/in.wav"
 
-# while statt for: --tts nimmt ein Argument, und in `for a in "$@"` wäre
-# ein shift wirkungslos.
+# while rather than for: --tts takes an argument, and inside `for a in "$@"` a
+# shift would have no effect.
 resume=false
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -52,7 +53,7 @@ while [ $# -gt 0 ]; do
     --yolo) PERMISSION_MODE=bypassPermissions; shift ;;
     --tts)  export TTS_BACKEND="${2:-auto}"; shift 2 ;;
     -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unbekannt: $1" >&2; exit 1 ;;
+    *) echo "unbekannte Option: $1" >&2; exit 1 ;;
   esac
 done
 
@@ -65,28 +66,28 @@ cleanup() {
   voicelock_release; rm -rf "$WORK"; echo; echo "Tschüss."
 }
 trap cleanup EXIT INT TERM
-voicelock_acquire   # sagt speak-answer.sh: Finger weg, ich spreche selbst
+voicelock_acquire   # tells speak-answer.sh to keep out, this loop speaks itself
 
 SID=""
 if $resume && [ -s "$SESSION_FILE" ]; then SID=$(cat "$SESSION_FILE"); fi
 
 speak() { "$HOME/.claude/bin/claude-say" "$1"; }
 
-# Nichts Verwertbares aufgenommen. Kurz bremsen; kommt das am Stück zu oft vor,
-# ist das Mikro stumm oder belegt — dann aussteigen statt ewig weiterdrehen.
+# Nothing usable recorded. Back off briefly; if it happens too often in a row
+# the mic is muted or taken, so bail out rather than spin forever.
 too_quiet() {
   idle=$((idle + 1))
   if [ "$idle" -ge 25 ]; then
     echo
-    echo "25x nichts gehört — Mikro stumm oder von einer anderen App belegt?"
+    echo "25x nichts gehört - Mikro stumm oder von einer anderen App belegt?"
     echo "Prüfen: Systemeinstellungen > Datenschutz > Mikrofon, und ob FluidVoice/Voicely gerade lauschen."
     exit 1
   fi
   sleep 0.2
 }
 
-# Eine Session, die offen bleibt. Vorher startete jede Aeusserung ein eigenes
-# `claude -p`; allein der Prozessstart kostete gemessen rund 13 Sekunden.
+# One session that stays open. Starting a `claude -p` per utterance costs about
+# 13 seconds of process startup alone, measured.
 LOOP="$HOME/.claude/voice-ui/agent-loop.mjs"
 [ -f "$LOOP" ] || LOOP="$(cd "$(dirname "$0")/.." && pwd)/ui/agent-loop.mjs"
 [ -f "$LOOP" ] || { echo "agent-loop.mjs fehlt: $LOOP" >&2; exit 1; }
@@ -98,59 +99,59 @@ LOOP_ARGS=(--cwd "$PWD" --permission-mode "$PERMISSION_MODE" --system-prompt "$V
 $resume && [ -n "$SID" ] && LOOP_ARGS+=(--resume "$SID")
 node "$LOOP" "${LOOP_ARGS[@]}" < "$FIFO_IN" > "$FIFO_OUT" 2>"$WORK/err" &
 LOOP_PID=$!
-# Beide Enden offen halten: sonst sieht node ein EOF, sobald der erste
-# Schreiber fertig ist, und beendet sich mitten in der Sitzung.
+# Hold both ends open: otherwise node sees an EOF as soon as the first writer
+# finishes, and exits in the middle of the session.
 exec 3> "$FIFO_IN"
 exec 4< "$FIFO_OUT"
 
-# Eine Zeile JSON hineinschicken. jq baut sie, damit Anfuehrungszeichen und
-# Zeilenumbrueche im Gesagten nichts zerreissen.
-sende() { jq -cn --arg t "$1" '{typ:"sagen",text:$t}' >&3; }
+# Send one line of JSON. jq builds it so that quotes and newlines in what was
+# said cannot tear it apart.
+send_utterance() { jq -cn --arg t "$1" '{type:"say",text:$t}' >&3; }
 
-# Antwort einlesen, bis der Zug fertig ist. Saetze werden gesprochen, sobald
-# sie ankommen — das ist der zweite Teil des Zeitgewinns.
-antwort_lesen() {
-  local zeile typ text name arg fid
-  while IFS= read -r zeile <&4; do
-    [ -n "$zeile" ] || continue
-    typ=$(printf '%s' "$zeile" | jq -r '.typ // ""')
-    case "$typ" in
-      satz)
-        text=$(printf '%s' "$zeile" | jq -r '.text')
+# Read the answer until the turn is complete. Sentences are spoken as they
+# arrive, which is the second half of the time saved.
+read_answer() {
+  local line kind text name arg fid
+  while IFS= read -r line <&4; do
+    [ -n "$line" ] || continue
+    kind=$(printf '%s' "$line" | jq -r '.type // ""')
+    case "$kind" in
+      sentence)
+        text=$(printf '%s' "$line" | jq -r '.text')
         printf '\033[1mClaude:\033[0m %s\n' "$text"
         spoken=$(printf '%s' "$text" | speakable_text)
         [ -n "$spoken" ] && speak "$(clip_to_sentence "$spoken" "$MAX_CHARS")"
         ;;
-      werkzeug)
-        name=$(printf '%s' "$zeile" | jq -r '.name')
-        arg=$(printf '%s' "$zeile" | jq -r '.arg')
+      tool)
+        name=$(printf '%s' "$line" | jq -r '.name')
+        arg=$(printf '%s' "$line" | jq -r '.arg')
         printf '\033[2m  %s %s\033[0m\n' "$name" "$arg"
         ;;
-      freigabe)
-        fid=$(printf '%s' "$zeile" | jq -r '.id')
-        name=$(printf '%s' "$zeile" | jq -r '.werkzeug')
-        arg=$(printf '%s' "$zeile" | jq -r '.arg')
+      permission)
+        fid=$(printf '%s' "$line" | jq -r '.id')
+        name=$(printf '%s' "$line" | jq -r '.tool')
+        arg=$(printf '%s' "$line" | jq -r '.arg')
         printf '\033[33m  Freigabe:\033[0m %s %s  [j/n] ' "$name" "$arg"
         speak "Freigabe für $name?"
-        # Vom Terminal lesen, nicht von der Pipe.
-        if read -r -n 1 taste < /dev/tty 2>/dev/null; then :; else taste=n; fi
+        # Read from the terminal, not from the pipe.
+        if read -r -n 1 key < /dev/tty 2>/dev/null; then :; else key=n; fi
         echo
-        case "$taste" in
-          j|J|y|Y|'') jq -cn --arg i "$fid" '{typ:"freigabe",id:$i,ok:true}' >&3 ;;
-          *)          jq -cn --arg i "$fid" '{typ:"freigabe",id:$i,ok:false}' >&3 ;;
+        case "$key" in
+          j|J|y|Y|'') jq -cn --arg i "$fid" '{type:"permission",id:$i,ok:true}' >&3 ;;
+          *)          jq -cn --arg i "$fid" '{type:"permission",id:$i,ok:false}' >&3 ;;
         esac
         ;;
       session)
-        SID=$(printf '%s' "$zeile" | jq -r '.id')
+        SID=$(printf '%s' "$line" | jq -r '.id')
         printf '%s' "$SID" > "$SESSION_FILE"
         ;;
-      fehler)
-        text=$(printf '%s' "$zeile" | jq -r '.text')
+      error)
+        text=$(printf '%s' "$line" | jq -r '.text')
         printf '\033[31mFehler:\033[0m %s\n' "$text"
         speak "Da ist etwas schiefgegangen."
         return 1
         ;;
-      fertig) return 0 ;;
+      done) return 0 ;;
     esac
   done
   return 1
@@ -165,8 +166,8 @@ echo 'Sprich einfach los. Aufnahme stoppt nach kurzer Stille. "stopp" beendet.'
 idle=0
 while true; do
   printf '\n\033[2m…hört zu\033[0m\r'
-  # Startet bei Sprache, stoppt nach SILENCE_SEC Stille. `|| true`, weil rec bei
-  # Timeout/Signal nonzero liefert, die Aufnahme aber trotzdem brauchbar ist.
+  # Starts on speech, stops after SILENCE_SEC of silence. `|| true` because rec
+  # returns nonzero on timeout or signal while the recording is still usable.
   rec -q -c 1 -r 16000 -b 16 -e signed-integer "$WAV" \
       silence 1 0.2 "$SILENCE_THRESH" 1 "$SILENCE_SEC" "$SILENCE_THRESH" \
       trim 0 "$MAX_REC" 2>/dev/null </dev/null || true
@@ -180,7 +181,7 @@ while true; do
            --prompt "$VOCAB" --carry-initial-prompt -f "$WAV" 2>/dev/null \
          | tr '\n' ' ' | sed 's/^ *//; s/ *$//')
 
-  # Whisper halluziniert auf Stille gern Standardphrasen — die wegwerfen.
+  # On silence Whisper likes to hallucinate stock phrases, so throw those away.
   lower=$(printf '%s' "$said" | tr '[:upper:]' '[:lower:]')
   case "$lower" in
     ''|'.'|'[blank_audio]'*|'(musik)'*|'untertitel'*|'vielen dank.'|'vielen dank!'|*amara.org*) too_quiet; continue ;;
@@ -196,7 +197,7 @@ while true; do
   printf '\033[1mDu:\033[0m %s\n' "$said"
   printf '\033[2m…denkt      \033[0m\r'
 
-  sende "$said"
-  antwort_lesen || true
-  sleep 0.4   # verhindert, dass das Mikro das Ende der eigenen Stimme aufnimmt
+  send_utterance "$said"
+  read_answer || true
+  sleep 0.4   # keeps the mic from recording the tail of our own voice
 done

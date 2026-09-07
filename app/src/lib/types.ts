@@ -78,7 +78,10 @@ export type Todo = {
 export type SpeechBackend = {
   id: string
   label: string
-  detail: string
+  /** A token the client translates, not prose: `claude-say` speaks German. */
+  detailCode: string
+  /** The part of the detail that is a name rather than a word, if any. */
+  detailArg: string
   available: boolean
   default?: string
   voices: { id: string; name?: string }[]

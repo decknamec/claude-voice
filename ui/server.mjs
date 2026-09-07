@@ -240,17 +240,33 @@ let styleText = ''          // free-form style, used when style === 'custom'
 
 // Response styles. The text is appended to the system prompt and therefore
 // applies to the whole session, so switching restarts it; resume keeps the
-// thread.
+// thread. Keyed by language like PROMPTS above: a German style instruction
+// next to an English answer prompt bleeds into the answer language.
 const STYLES = {
-  standard: '',
-  concise: 'Fasse dich so kurz wie moeglich: ein bis zwei Saetze, keine Einleitung, keine Zusammenfassung am Ende.',
-  thorough: 'Antworte ausfuehrlicher als noetig waere: nenne den Grund, eine Alternative und woran es scheitern koennte.',
-  explanatory: 'Erklaere so, dass es jemand ohne Vorwissen versteht. Fachbegriffe beim ersten Auftauchen in einem Halbsatz erklaeren.',
-  factual: 'Antworte nuechtern und ohne Floskeln. Kein Lob, keine Einleitungssaetze, keine Rueckfragen aus Hoeflichkeit.',
-  casual: 'Antworte locker und gespraechig, so wie man es einem Kollegen im Nebenzimmer zurufen wuerde.',
-  socratic: 'Gib die Antwort nicht sofort. Stelle zuerst eine Rueckfrage, die den Kern trifft, und leite dann hin.'
+  de: {
+    standard: '',
+    concise: 'Fasse dich so kurz wie moeglich: ein bis zwei Saetze, keine Einleitung, keine Zusammenfassung am Ende.',
+    thorough: 'Antworte ausfuehrlicher als noetig waere: nenne den Grund, eine Alternative und woran es scheitern koennte.',
+    explanatory: 'Erklaere so, dass es jemand ohne Vorwissen versteht. Fachbegriffe beim ersten Auftauchen in einem Halbsatz erklaeren.',
+    factual: 'Antworte nuechtern und ohne Floskeln. Kein Lob, keine Einleitungssaetze, keine Rueckfragen aus Hoeflichkeit.',
+    casual: 'Antworte locker und gespraechig, so wie man es einem Kollegen im Nebenzimmer zurufen wuerde.',
+    socratic: 'Gib die Antwort nicht sofort. Stelle zuerst eine Rueckfrage, die den Kern trifft, und leite dann hin.'
+  },
+  en: {
+    standard: '',
+    concise: 'Keep it as short as possible: one or two sentences, no preamble, no summary at the end.',
+    thorough: 'Answer more fully than strictly needed: give the reason, one alternative, and what could go wrong with it.',
+    explanatory: 'Explain so that someone without prior knowledge follows. Gloss a technical term in half a sentence the first time it appears.',
+    factual: 'Answer plainly and without filler. No praise, no opening pleasantries, no questions asked out of politeness.',
+    casual: 'Answer loosely and conversationally, the way you would call something over to a colleague next door.',
+    socratic: 'Do not give the answer straight away. Ask one question that gets at the heart of it first, then lead there.'
+  }
 }
-const stylePrompt = () => style === 'custom' ? styleText.slice(0, 800) : (STYLES[style] || '')
+// `auto` answers in whatever the user just spoke, so its prompt is English;
+// the style has to match that rather than the last utterance.
+const stylePrompt = () => style === 'custom'
+  ? styleText.slice(0, 800)
+  : (lang === 'de' ? STYLES.de : STYLES.en)[style] || ''
 
 // What Claude Code shows in the terminal status line: duration, tokens, cost,
 // how full the context window is. Without it there is no telling whether a
@@ -575,7 +591,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname.startsWith('/api/audio/')) {
       const id = url.pathname.slice('/api/audio/'.length)
       const a = audio.get(id)
-      if (!a || !existsSync(a.path)) return json(res, 404, { error: 'weg' })
+      if (!a || !existsSync(a.path)) return json(res, 404, { error: 'audio expired' })
       audio.delete(id)
       const buf = readFileSync(a.path)
       await rm(a.dir, { recursive: true, force: true })
@@ -618,7 +634,7 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/say') {
       const { text } = JSON.parse((await body(req)).toString('utf8'))
-      if (!text?.trim()) return json(res, 400, { error: 'leer' })
+      if (!text?.trim()) return json(res, 400, { error: 'empty text' })
       if (!S) startSession(conf)
       S.send(text)
       return json(res, 200, { ok: true })
@@ -807,7 +823,7 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/api/style') {
       const { style: st, text } = JSON.parse((await body(req)).toString('utf8'))
-      if (st !== 'custom' && !(st in STYLES)) return json(res, 400, { error: 'unbekannter Stil' })
+      if (st !== 'custom' && !(st in STYLES.de)) return json(res, 400, { error: 'unknown response style' })
       style = st
       if (st === 'custom') styleText = String(text || '')
       const restarted = await restartSession(conf)
@@ -815,13 +831,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/style') {
-      return json(res, 200, { style, text: styleText, styles: Object.keys(STYLES) })
+      return json(res, 200, { style, text: styleText, styles: Object.keys(STYLES.de) })
     }
 
     if (req.method === 'POST' && url.pathname === '/api/effort') {
       const { effort: e } = JSON.parse((await body(req)).toString('utf8'))
       const allowed = [null, '', 'low', 'medium', 'high', 'xhigh', 'max']
-      if (!allowed.includes(e)) return json(res, 400, { error: 'unbekannte Stufe' })
+      if (!allowed.includes(e)) return json(res, 400, { error: 'unknown thinking depth' })
       effort = e || null
       // Thinking depth is set at session start; there is no setEffort.
       let restarted = false
@@ -868,7 +884,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/permission') {
       const { id, behavior, message, scope, tool, input } = JSON.parse((await body(req)).toString('utf8'))
       const resolve = S?.pending.get(id)
-      if (!resolve) return json(res, 404, { error: 'unbekannte Anfrage' })
+      if (!resolve) return json(res, 404, { error: 'unknown request' })
       S.pending.delete(id)
       // The scope applies to this session only. Writing something standing to
       // disk would be a decision of longer reach than a click in a voice window

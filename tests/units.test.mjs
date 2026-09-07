@@ -110,7 +110,8 @@ test('speakable: empty text stays empty', () => {
 const PASSTHROUGH = new Set([
   'StatusReport.email', 'StatusReport.organization', 'StatusReport.subscriptionType',
   'StatusReport.apiKeySource',
-  'SpeechBackend.label', 'SpeechBackend.available', 'SpeechBackend.voices'
+  'SpeechBackend.label', 'SpeechBackend.available', 'SpeechBackend.voices',
+  'SpeechBackend.detailCode', 'SpeechBackend.detailArg'
 ])
 
 const SERVER_TYPES = [
@@ -137,4 +138,38 @@ test('wire: every field the client declares is emitted by the server', () => {
     }
   }
   assert.deepEqual(missing, [], 'fields absent from ui/server.mjs')
+})
+
+test('wire: the response styles are the same set everywhere', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const read = f => readFileSync(join(here, '..', f), 'utf8')
+
+  // The server holds one table per language, the picker holds the order, and
+  // both catalogues hold the labels. A style added to one of them only is a
+  // dropdown entry the server rejects with 400.
+  const server = read('ui/server.mjs')
+  const table = lang => {
+    const body = server.match(new RegExp(`\\n  ${lang}: \\{[\\s\\S]*?\\n  \\}`))?.[0]
+    assert.ok(body, `STYLES.${lang} not found`)
+    return [...body.matchAll(/^\s{4}(\w+):/gm)].map(([, k]) => k).sort()
+  }
+  const de = table('de')
+  assert.deepEqual(table('en'), de, 'STYLES.de and STYLES.en differ')
+
+  const picker = read('app/src/components/SettingsGroups.tsx')
+    .match(/export const STYLES[^=]*=\s*\[([\s\S]*?)\]/)?.[1]
+  assert.ok(picker, 'the picker\u2019s STYLES list not found')
+  const offered = [...picker.matchAll(/'(\w+)'/g)].map(([, k]) => k)
+  // `custom` is free text and has no entry in the server's table.
+  assert.deepEqual(offered.filter(k => k !== 'custom').sort(), de,
+    'the picker offers styles the server does not know')
+
+  for (const f of ['app/src/lib/i18n/messages.ts', 'app/src/lib/i18n/en.ts']) {
+    const block = read(f).match(/\n  style: \{[\s\S]*?\n  \}/)?.[0]
+    assert.ok(block, `style block missing from ${f}`)
+    const labelled = [...block.matchAll(/^\s{4}(\w+):/gm)].map(([, k]) => k)
+    for (const k of offered) {
+      assert.ok(labelled.includes(k), `${f} has no label for style "${k}"`)
+    }
+  }
 })

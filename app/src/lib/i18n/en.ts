@@ -112,6 +112,23 @@ export const en: Messages = {
     bypassPermissions: 'never ask'
   },
 
+  backendLabel: {
+    auto: 'Automatic',
+    piper: 'Piper (local)',
+    say: 'System (macOS)'
+  },
+  backendDetail: {
+    bestAvailable: 'best available',
+    alwaysAvailable: 'always available',
+    keyNone: 'no key configured',
+    keyEnv: 'key from the environment variable',
+    keyFile: 'key from ~/.claude/voice.env',
+    keyOnePassword: 'key from 1Password',
+    keyKeychain: 'key from the keychain',
+    edgeMissing: 'edge-tts not installed',
+    edgeReady: 'Microsoft Neural, no key',
+    piperMissing: 'piper or the voice model is missing'
+  },
   style: {
     standard: 'as usual',
     concise: 'concise',

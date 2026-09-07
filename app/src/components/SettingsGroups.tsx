@@ -83,11 +83,20 @@ export function SettingsGroup ({ models }: { models: ModelInfo[] }) {
       <Field label={m.settings.speechOutput}>
         <Select
           value={backend} onChange={setBackend}
-          choices={backends.map(b => ({
-            value: b.id,
-            label: b.available ? b.label : `${b.label} (${b.detail})`,
-            title: b.detail
-          }))}
+          choices={backends.map(b => {
+            const label = (m.backendLabel as Record<string, string>)[b.id] ?? b.label
+            // `name` means the detail is the name itself, so there is nothing
+            // to translate; the argument otherwise qualifies the phrase.
+            const phrase = (m.backendDetail as Record<string, string>)[b.detailCode]
+            const detail = b.detailCode === 'name' || !phrase
+              ? b.detailArg || b.detailCode
+              : b.detailArg ? `${phrase} (${b.detailArg})` : phrase
+            return {
+              value: b.id,
+              label: b.available ? label : `${label} (${detail})`,
+              title: detail
+            }
+          })}
         />
       </Field>
       <Field label={m.settings.voice}>

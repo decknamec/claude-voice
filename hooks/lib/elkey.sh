@@ -9,9 +9,14 @@
 # otherwise costs 1 to 4 seconds before every spoken sentence.
 # Always defined, so that `set -u` does not bail out on a read.
 EL_KEY_SOURCE="${EL_KEY_SOURCE:-}"
+# The UI cannot translate prose, so every source carries a token beside its
+# German label. EL_KEY_SOURCE_ARG holds the part that is a name, not a word.
+EL_KEY_SOURCE_ID="${EL_KEY_SOURCE_ID:-}"
+EL_KEY_SOURCE_ARG="${EL_KEY_SOURCE_ARG:-}"
+el_found() { EL_KEY_SOURCE_ID="$1"; EL_KEY_SOURCE="$2"; EL_KEY_SOURCE_ARG="$3"; }
 
 el_resolve_key() {
-  if [ -n "${ELEVENLABS_API_KEY:-}" ]; then EL_KEY_SOURCE="Umgebungsvariable"; return 0; fi
+  if [ -n "${ELEVENLABS_API_KEY:-}" ]; then el_found "keyEnv" "Umgebungsvariable" ""; return 0; fi
 
   # Simplest route: a file with KEY=VALUE, chmod 600, outside the repo.
   # Convenient, but in cleartext on disk, which is weaker than keychain or
@@ -20,7 +25,7 @@ el_resolve_key() {
   if [ -f "$envf" ]; then
     local v; v=$(grep -m1 '^ELEVENLABS_API_KEY=' "$envf" 2>/dev/null | cut -d= -f2- | tr -d '"'"'"'[:space:]')
     if [ -n "$v" ]; then
-      ELEVENLABS_API_KEY="$v"; EL_KEY_SOURCE="~/.claude/voice.env"; return 0
+      ELEVENLABS_API_KEY="$v"; el_found "keyFile" "~/.claude/voice.env" ""; return 0
     fi
   fi
 
@@ -29,14 +34,14 @@ el_resolve_key() {
     [ -n "${EL_KEY_OP_ACCOUNT:-}" ] && opargs=(--account "$EL_KEY_OP_ACCOUNT")
     local v; v=$(op read --no-newline "${opargs[@]}" "$EL_KEY_OP_REF" 2>/dev/null)
     if [ -n "$v" ]; then
-      ELEVENLABS_API_KEY="$v"; EL_KEY_SOURCE="1Password ($EL_KEY_OP_REF)"; return 0
+      ELEVENLABS_API_KEY="$v"; el_found "keyOnePassword" "1Password ($EL_KEY_OP_REF)" "$EL_KEY_OP_REF"; return 0
     fi
   fi
 
   local k; k=$(security find-generic-password -s elevenlabs-api-key -w 2>/dev/null)
   if [ -n "$k" ]; then
-    ELEVENLABS_API_KEY="$k"; EL_KEY_SOURCE="Schlüsselbund"; return 0
+    ELEVENLABS_API_KEY="$k"; el_found "keyKeychain" "Schlüsselbund" ""; return 0
   fi
 
-  EL_KEY_SOURCE=""; return 1
+  EL_KEY_SOURCE=""; EL_KEY_SOURCE_ID=""; EL_KEY_SOURCE_ARG=""; return 1
 }

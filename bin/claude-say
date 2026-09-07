@@ -165,12 +165,15 @@ case "${1:-}" in
   --backends-json)
     # Machine readable for the UI: what is available, why not, which voices.
     # One source of truth, so the UI never has to parse text output.
-    el_ok=false; el_detail="kein Key hinterlegt"
-    if el_resolve_key; then el_ok=true; el_detail="Key über $EL_KEY_SOURCE"; fi
-    p_ok=false; p_detail="piper oder Stimmmodell fehlt"
-    if piper_ready; then p_ok=true; p_detail="$(basename "$(piper_bin)")"; fi
-    e_ok=false; e_detail="edge-tts nicht installiert"
-    if edge_ready; then e_ok=true; e_detail="Microsoft Neural, ohne Key"; fi
+    # The detail is a token plus, where it is a name rather than a word, the
+    # name itself. The UI translates the token; prose here would stay German
+    # on the English side.
+    el_ok=false; el_code="keyNone"; el_arg=""
+    if el_resolve_key; then el_ok=true; el_code="$EL_KEY_SOURCE_ID"; el_arg="$EL_KEY_SOURCE_ARG"; fi
+    p_ok=false; p_code="piperMissing"; p_arg=""
+    if piper_ready; then p_ok=true; p_code="name"; p_arg="$(basename "$(piper_bin)")"; fi
+    e_ok=false; e_code="edgeMissing"
+    if edge_ready; then e_ok=true; e_code="edgeReady"; fi
 
     say_voices=$(say -v '?' 2>/dev/null | grep de_DE | sed 's/ *de_DE.*//' | sed 's/ *$//')
     piper_voices=$(ls "$HOME/.claude/piper-voices"/*.onnx 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.onnx$//')
@@ -182,9 +185,9 @@ case "${1:-}" in
 
     jq -nc \
       --arg active "$TTS_BACKEND" \
-      --argjson elok "$el_ok" --arg eld "$el_detail" --arg defl "$EL_VOICE_ID" \
-      --argjson pok "$p_ok"  --arg pd  "$p_detail" --arg defp "$(basename "$PIPER_MODEL" .onnx)" \
-      --argjson eok "$e_ok"  --arg ed  "$e_detail" --arg defe "$EDGE_VOICE" \
+      --argjson elok "$el_ok" --arg elc "$el_code" --arg ela "$el_arg" --arg defl "$EL_VOICE_ID" \
+      --argjson pok "$p_ok"  --arg pc  "$p_code"  --arg pa  "$p_arg" --arg defp "$(basename "$PIPER_MODEL" .onnx)" \
+      --argjson eok "$e_ok"  --arg ec  "$e_code"  --arg defe "$EDGE_VOICE" \
       --arg defs "$VOICE" \
       --arg sv "$say_voices" --arg pv "$piper_voices" --arg ev "$edge_voices" --arg lv "$el_voices" '
         def plain: if . == "" then [] else [splits("
@@ -193,11 +196,11 @@ case "${1:-}" in
 ") | select(length > 0)
                      | split("	") | {id: .[0], name: (.[1] // .[0])}] end;
         { active: $active, backends: [
-          { id:"auto",       label:"Automatisch",      available:true,  detail:"bestes verfügbares", voices:[], default:"" },
-          { id:"elevenlabs", label:"ElevenLabs",       available:$elok, detail:$eld, voices:($lv|pairs), default:$defl, network:true, cost:true },
-          { id:"edge",       label:"Edge (Microsoft)", available:$eok,  detail:$ed,  voices:($ev|plain), default:$defe, network:true },
-          { id:"piper",      label:"Piper (lokal)",    available:$pok,  detail:$pd,  voices:($pv|plain), default:$defp },
-          { id:"say",        label:"System (macOS)",   available:true,  detail:"immer verfügbar", voices:($sv|plain), default:$defs }
+          { id:"auto",       label:"Automatisch",      available:true,  detailCode:"bestAvailable", detailArg:"", voices:[], default:"" },
+          { id:"elevenlabs", label:"ElevenLabs",       available:$elok, detailCode:$elc, detailArg:$ela, voices:($lv|pairs), default:$defl, network:true, cost:true },
+          { id:"edge",       label:"Edge (Microsoft)", available:$eok,  detailCode:$ec,  detailArg:"",   voices:($ev|plain), default:$defe, network:true },
+          { id:"piper",      label:"Piper (lokal)",    available:$pok,  detailCode:$pc,  detailArg:$pa,  voices:($pv|plain), default:$defp },
+          { id:"say",        label:"System (macOS)",   available:true,  detailCode:"alwaysAvailable", detailArg:"", voices:($sv|plain), default:$defs }
         ]}'
     exit 0 ;;
   --backends)

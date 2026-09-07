@@ -119,6 +119,23 @@ export const de = {
     bypassPermissions: 'ohne jede Rückfrage'
   },
 
+  backendLabel: {
+    auto: 'Automatisch',
+    piper: 'Piper (lokal)',
+    say: 'System (macOS)'
+  },
+  backendDetail: {
+    bestAvailable: 'bestes verfügbares',
+    alwaysAvailable: 'immer verfügbar',
+    keyNone: 'kein Key hinterlegt',
+    keyEnv: 'Key aus der Umgebungsvariable',
+    keyFile: 'Key aus ~/.claude/voice.env',
+    keyOnePassword: 'Key aus 1Password',
+    keyKeychain: 'Key aus dem Schlüsselbund',
+    edgeMissing: 'edge-tts nicht installiert',
+    edgeReady: 'Microsoft Neural, ohne Key',
+    piperMissing: 'piper oder Stimmmodell fehlt'
+  },
   style: {
     standard: 'wie üblich',
     concise: 'concise',

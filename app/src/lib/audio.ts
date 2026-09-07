@@ -1,4 +1,4 @@
-import { api } from './api'
+import { api } from './api.ts'
 
 // Alles Hörbare und alles, was sich pro Bild ändert, lebt hier — außerhalb von
 // React. Pegel, Wellenform und Sprachaktivität ändern sich mit der Bildrate;

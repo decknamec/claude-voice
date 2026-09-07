@@ -110,6 +110,12 @@ t "install.sh verlinkt agent-loop.mjs" \
 t "Schleife findet ihre Datei auch ohne Installation" \
   "grep -q 'dirname \"\$0\")/..' '$REPO/bin/claude-voice'"
 
+echo "Einheitentests"
+t "reine Logik im Server" "node --test '$REPO/tests/einheiten.test.mjs'"
+t "reine Logik in der Oberflaeche" \
+  "cd '$REPO/app' && node --test src/logik.test.ts" \
+  "npm install im Ordner app fehlt?"
+
 echo "Desktop-Schale"
 # cargo build dauert zu lange fuer einen Rauchtest — geprueft wird, was ohne
 # Uebersetzer nachweisbar ist.
@@ -129,6 +135,15 @@ t "Server bemerkt, wenn er verwaist" \
 t "Token ueberlebt ein Neuladen" \
   "grep -q \"sessionStorage.setItem('cv-token'\" '$REPO/app/src/lib/api.ts'" \
   "die Schale putzt es aus der URL, Cmd-R haette danach keins mehr"
+# rustup legt cargo nach ~/.cargo/bin, das aber nur in den PATH, wenn man es
+# beim Installieren zulaesst. Beides beruecksichtigen.
+CARGO=$(command -v cargo || echo "$HOME/.cargo/bin/cargo")
+if [ -x "$CARGO" ]; then
+  t "Rust-Hilfsfunktionen" \
+    "cd '$REPO/desktop/src-tauri' && '$CARGO' test --quiet 2>&1 | grep -q 'test result: ok'"
+else
+  printf '  \033[2m--\033[0m   Rust-Tests uebersprungen: kein cargo gefunden\n'
+fi
 t "desktop-Bauordner sind ignoriert" \
   "grep -q '^desktop/src-tauri/target/' '$REPO/.gitignore'"
 

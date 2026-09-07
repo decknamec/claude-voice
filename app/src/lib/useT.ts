@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { seit, uebersetze, uiSprache } from './i18n'
-import { useEinstellungen } from '../store/einstellungen'
+import { seit, uebersetze, uiSprache } from './i18n.ts'
+import { useEinstellungen } from '../store/einstellungen.ts'
 
 /** Übersetzer und Sprachcode. Der deutsche Text ist zugleich der Schlüssel,
  *  eine fehlende Übersetzung lässt ihn also einfach stehen. */

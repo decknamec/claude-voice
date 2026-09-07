@@ -214,10 +214,22 @@ Sätze ohne Markdown begrenzt. Vorgelesene Codeblöcke sind unbrauchbar.
 ## Tests
 
 ```bash
-tests/smoke.sh
+tests/smoke.sh          # alles: Skripte, Bau, Einheitentests, Rust
+node --test tests/      # nur die Einheitentests des Servers
+cd app && node --test src/logik.test.ts
 ```
 
-Kein Netz, keine API-Aufrufe, wenige Sekunden. Deckt die Fehlerklasse ab, die beim
-Bau wiederholt zugeschlagen hat: bash-3.2-Syntax (macOS liefert kein bash 4),
-Argument-Parsing, Vorrang der Konfigquellen, Lock-Verhalten bei zwei parallelen
-Sprechern, Textaufbereitung, und ob die UI-Endpunkte hinter der Token-Prüfung liegen.
+`tests/smoke.sh` deckt die Fehlerklassen ab, die beim Bauen wirklich
+zugeschlagen haben: bash-3.2-Syntax, Argument-Parsing, Vorrang der
+Konfigquellen, Lock-Verhalten, Uebersetzungsluecken. Die Einheitentests
+pruefen die reine Logik — die Zustandsmaschine der Oberflaeche, die
+Transkript-Auswertung, die Textaufbereitung fuers Vorlesen.
+
+Was hier nicht geprueft werden kann: alles, was ein Mikrofon, das Whisper-Modell
+oder eine angemeldete `claude`-CLI braucht. Diese Grenze ist echt — ein gruener
+Durchlauf heisst nicht, dass gesprochen werden kann.
+
+GitHub Actions laesst dasselbe auf einem frischen Klon laufen. Genau das ist
+der Zweck: auf dem Entwicklungsrechner liegen `node_modules`, `dist` und die
+Rust-Toolchain schon herum, dort laeuft alles auch dann, wenn im Repo etwas
+fehlt.

@@ -1,7 +1,7 @@
-import { ApiFehler, api } from './api'
-import { audio } from './audio'
-import { markiereZugStart, setzeStatsZurueck } from './strom'
-import { neueId, useSitzung } from '../store/sitzung'
+import { ApiFehler, api } from './api.ts'
+import { audio } from './audio.ts'
+import { markiereZugStart, setzeStatsZurueck } from './strom.ts'
+import { neueId, useSitzung } from '../store/sitzung.ts'
 
 const S = () => useSitzung.getState()
 

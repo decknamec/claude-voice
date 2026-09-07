@@ -55,7 +55,10 @@ fn finde_server() -> Result<PathBuf, String> {
         if p.is_file() {
             return Ok(p);
         }
-        return Err(format!("CLAUDE_VOICE_SERVER zeigt ins Leere: {}", p.display()));
+        return Err(format!(
+            "CLAUDE_VOICE_SERVER zeigt ins Leere: {}",
+            p.display()
+        ));
     }
     let heim = std::env::var("HOME").map_err(|_| "HOME ist nicht gesetzt".to_string())?;
     let kandidaten = [
@@ -67,9 +70,11 @@ fn finde_server() -> Result<PathBuf, String> {
             return Ok(k.canonicalize().unwrap_or_else(|_| k.clone()));
         }
     }
-    Err("server.mjs nicht gefunden. Einmal ./install.sh im Repo laufen lassen, \
+    Err(
+        "server.mjs nicht gefunden. Einmal ./install.sh im Repo laufen lassen, \
          oder CLAUDE_VOICE_SERVER auf die Datei zeigen lassen."
-        .into())
+            .into(),
+    )
 }
 
 fn freier_port() -> u16 {
@@ -121,7 +126,9 @@ fn warte_auf_server(port: u16, frist: Duration) -> bool {
 /// eine eigene Wache auf den Elternprozess — für die Fälle, in denen wir gar
 /// nicht mehr dazu kommen, etwas zu schicken.
 fn beende_diener(app: &tauri::AppHandle) {
-    let Some(mut kind) = app.state::<Diener>().0.lock().unwrap().take() else { return };
+    let Some(mut kind) = app.state::<Diener>().0.lock().unwrap().take() else {
+        return;
+    };
     #[cfg(unix)]
     unsafe {
         libc::kill(kind.id() as i32, libc::SIGTERM);
@@ -146,10 +153,7 @@ fn fehlerfenster(app: &tauri::AppHandle, text: &str) {
         <h1>Claude Voice kann nicht starten</h1><pre>{}</pre>"#,
         text.replace('<', "&lt;")
     );
-    let daten = format!(
-        "data:text/html;charset=utf-8,{}",
-        urlencode(&html)
-    );
+    let daten = format!("data:text/html;charset=utf-8,{}", urlencode(&html));
     let _ = WebviewWindowBuilder::new(app, "fehler", WebviewUrl::External(daten.parse().unwrap()))
         .title("Claude Voice")
         .inner_size(640.0, 340.0)
@@ -185,9 +189,8 @@ fn main() {
                         // Die Seite hört auf dieses Ereignis und beginnt
                         // aufzunehmen. eval statt IPC, damit die Seite keine
                         // Sonderrechte für eine entfernte Herkunft braucht.
-                        let _ = w.eval(
-                            "window.dispatchEvent(new CustomEvent('claude-voice-hotkey'))",
-                        );
+                        let _ =
+                            w.eval("window.dispatchEvent(new CustomEvent('claude-voice-hotkey'))");
                     }
                 })
                 .build(),
@@ -239,10 +242,16 @@ fn main() {
 
             // Die Ausgaben des Servers mitlesen, sonst läuft die Pipe voll und
             // der Prozess blockiert irgendwann beim Schreiben.
-            for strom in [kind.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-                          kind.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)]
-                .into_iter()
-                .flatten()
+            for strom in [
+                kind.stdout
+                    .take()
+                    .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+                kind.stderr
+                    .take()
+                    .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            ]
+            .into_iter()
+            .flatten()
             {
                 std::thread::spawn(move || {
                     for zeile in BufReader::new(strom).lines().map_while(Result::ok) {
@@ -253,7 +262,10 @@ fn main() {
             app.state::<Diener>().0.lock().unwrap().replace(kind);
 
             if !warte_auf_server(port, Duration::from_secs(25)) {
-                fehlerfenster(&handle, "Der Server antwortet nicht. Läuft schon eine Instanz?");
+                fehlerfenster(
+                    &handle,
+                    "Der Server antwortet nicht. Läuft schon eine Instanz?",
+                );
                 return Ok(());
             }
 
@@ -275,7 +287,15 @@ fn main() {
             let zeigen = MenuItem::with_id(app, "zeigen", "Fenster zeigen", true, None::<&str>)?;
             let neu = MenuItem::with_id(app, "neu", "Neue Session", true, None::<&str>)?;
             let beenden = PredefinedMenuItem::quit(app, Some("Beenden"))?;
-            let menue = Menu::with_items(app, &[&zeigen, &neu, &PredefinedMenuItem::separator(app)?, &beenden])?;
+            let menue = Menu::with_items(
+                app,
+                &[
+                    &zeigen,
+                    &neu,
+                    &PredefinedMenuItem::separator(app)?,
+                    &beenden,
+                ],
+            )?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
@@ -290,9 +310,8 @@ fn main() {
                     }
                     "neu" => {
                         if let Some(w) = app.get_webview_window("haupt") {
-                            let _ = w.eval(
-                                "window.dispatchEvent(new CustomEvent('claude-voice-neu'))",
-                            );
+                            let _ =
+                                w.eval("window.dispatchEvent(new CustomEvent('claude-voice-neu'))");
                         }
                     }
                     _ => {}
@@ -313,10 +332,82 @@ fn main() {
         .run(|app, ereignis| {
             // Auch der Weg über das Menü oder Cmd-Q muss aufräumen, nicht nur
             // das Schließen des Fensters.
-            if matches!(ereignis, tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }) {
+            if matches!(
+                ereignis,
+                tauri::RunEvent::Exit | tauri::RunEvent::ExitRequested { .. }
+            ) {
                 beende_diener(app);
             }
         });
 }
 
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn urlencode_laesst_harmlose_zeichen_stehen() {
+        assert_eq!(urlencode("abcXYZ089-_.~"), "abcXYZ089-_.~");
+    }
+
+    #[test]
+    fn urlencode_kodiert_alles_uebrige_byteweise() {
+        assert_eq!(urlencode("a b"), "a%20b");
+        assert_eq!(urlencode("<h1>"), "%3Ch1%3E");
+        // Umlaute sind zwei Bytes in UTF-8 und muessen einzeln kodiert werden,
+        // sonst zerfaellt die Fehlerseite genau dort, wo sie erklaeren soll.
+        assert_eq!(urlencode("ä"), "%C3%A4");
+    }
+
+    #[test]
+    fn suche_findet_nur_dateien_im_pfad() {
+        let dir = std::env::temp_dir().join("cv-test-suche");
+        let _ = fs::create_dir_all(&dir);
+        let datei = dir.join("gibtes");
+        fs::write(&datei, b"#!/bin/sh\n").unwrap();
+        let pfad = format!("/gibt/es/nicht:{}", dir.display());
+        assert_eq!(suche(&pfad, "gibtes"), Some(datei));
+        assert_eq!(suche(&pfad, "gibtesnicht"), None);
+        // Ein Verzeichnis ist keine ausfuehrbare Datei.
+        let unterordner = dir.join("ordner");
+        let _ = fs::create_dir_all(&unterordner);
+        assert_eq!(suche(&pfad, "ordner"), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn finde_server_nimmt_die_umgebungsvariable_ernst() {
+        let datei = std::env::temp_dir().join("cv-test-server.mjs");
+        fs::write(&datei, b"// leer\n").unwrap();
+        unsafe { std::env::set_var("CLAUDE_VOICE_SERVER", &datei) };
+        assert_eq!(finde_server().unwrap(), datei);
+
+        // Zeigt sie ins Leere, ist das ein Fehler mit Hinweis — kein stilles
+        // Ausweichen auf einen anderen Ort, sonst startet die App mit einer
+        // Fassung, die der Nutzer gar nicht meinte.
+        unsafe { std::env::set_var("CLAUDE_VOICE_SERVER", "/gibt/es/nicht.mjs") };
+        let fehler = finde_server().unwrap_err();
+        assert!(fehler.contains("zeigt ins Leere"), "{fehler}");
+
+        unsafe { std::env::remove_var("CLAUDE_VOICE_SERVER") };
+        let _ = fs::remove_file(&datei);
+    }
+
+    #[test]
+    fn token_ist_lang_genug_und_wiederholt_sich_nicht() {
+        let a = wuerfel_token();
+        let b = wuerfel_token();
+        assert_eq!(a.len(), 48);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn freier_port_liegt_ausserhalb_der_wohlbekannten() {
+        let p = freier_port();
+        assert!(p > 1024, "Port {p} braucht Rechte, die eine App nicht hat");
+    }
+}

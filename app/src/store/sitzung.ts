@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type {
   Blase, FreigabeAnfrage, GitLage, SpurZeile, Stats, Todo, Zustand
-} from '../lib/types'
+} from '../lib/types.ts'
 
 export type Unteragent = {
   id: string

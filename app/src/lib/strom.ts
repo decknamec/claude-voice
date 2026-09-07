@@ -1,10 +1,10 @@
-import { TOKEN, api } from './api'
-import { audio } from './audio'
-import { argText, schrittText, VERB } from './werkzeuge'
-import { useSitzung, neueId, leereStats } from '../store/sitzung'
+import { TOKEN, api } from './api.ts'
+import { audio } from './audio.ts'
+import { argText, schrittText, VERB } from './werkzeuge.ts'
+import { useSitzung, neueId, leereStats } from '../store/sitzung.ts'
 import type {
   FreigabeAnfrage, Stats, SubagentEreignis, Todo, WerkzeugEreignis
-} from './types'
+} from './types.ts'
 
 type Melder = (titel: string, text: string, schlecht?: boolean) => void
 

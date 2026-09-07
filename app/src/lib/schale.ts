@@ -1,6 +1,6 @@
-import { steuerung } from './steuerung'
-import { useSitzung } from '../store/sitzung'
-import { audio } from './audio'
+import { steuerung } from './steuerung.ts'
+import { useSitzung } from '../store/sitzung.ts'
+import { audio } from './audio.ts'
 
 /** Läuft die Seite in der Desktop-Schale? Tauri setzt beides. */
 export const inSchale = () =>

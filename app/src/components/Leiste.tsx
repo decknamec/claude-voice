@@ -5,13 +5,13 @@ import {
   Gauge, GitBranch, HourglassMedium, ShieldCheck
 } from '@phosphor-icons/react'
 import clsx from 'clsx'
-import { api } from '../lib/api'
-import { useSitzung } from '../store/sitzung'
-import { useT } from '../lib/useT'
-import { useMeldungen } from './ui/Meldungen'
-import { zahl } from './GruppenUnten'
-import { MODUS_NAME } from './GruppenOben'
-import type { Fenster, GitLage } from '../lib/types'
+import { api } from '../lib/api.ts'
+import { useSitzung } from '../store/sitzung.ts'
+import { useT } from '../lib/useT.ts'
+import { useMeldungen } from './ui/Meldungen.tsx'
+import { zahl } from './GruppenUnten.tsx'
+import { MODUS_NAME } from './GruppenOben.tsx'
+import type { Fenster, GitLage } from '../lib/types.ts'
 
 const dauerText = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Microphone } from '@phosphor-icons/react'
 import clsx from 'clsx'
-import { audio } from '../lib/audio'
-import { steuerung, fehlerText } from '../lib/steuerung'
-import { useSitzung } from '../store/sitzung'
-import { useT } from '../lib/useT'
-import { useMeldungen } from './ui/Meldungen'
+import { audio } from '../lib/audio.ts'
+import { steuerung, fehlerText } from '../lib/steuerung.ts'
+import { useSitzung } from '../store/sitzung.ts'
+import { useT } from '../lib/useT.ts'
+import { useMeldungen } from './ui/Meldungen.tsx'
 
 const TEXT: Record<string, string> = {
   idle: 'Bereit', listening: 'Hört zu…', transcribing: 'Verstehe…',

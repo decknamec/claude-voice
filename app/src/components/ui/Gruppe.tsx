@@ -2,7 +2,7 @@ import * as Collapsible from '@radix-ui/react-collapsible'
 import { CaretRight } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { useEinstellungen } from '../../store/einstellungen'
+import { useEinstellungen } from '../../store/einstellungen.ts'
 
 /** Eine Gruppe in der Seitenleiste. Der Zustand wird gemerkt, damit man seine
  *  Anordnung nicht nach jedem Neuladen wiederherstellen muss. */

@@ -1,0 +1,108 @@
+name: Prüfen
+
+# Der eigentliche Zweck: beweisen, dass ein frischer Klon baut. Auf dem
+# Entwicklungsrechner liegen node_modules, dist, das Whisper-Modell und die
+# Rust-Toolchain schon herum — dort läuft alles, auch wenn im Repo etwas fehlt.
+#
+# Was hier nicht geprüft werden kann: alles, was ein Mikrofon, das 547 MB große
+# Whisper-Modell oder eine angemeldete claude-CLI braucht. Diese Grenze ist
+# echt, und ein grüner Haken hier heißt nicht, dass gesprochen werden kann.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oberflaeche:
+    name: Oberfläche und Server
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            ui/package-lock.json
+
+      # Der Rauchtest ruft Werkzeuge auf, die auf dem Runner nicht liegen.
+      # jq ist vorinstalliert, sox und whisper-cpp nicht — die braucht er aber
+      # auch nicht, er prüft nur Skripte und Dateien.
+      - name: Abhängigkeiten
+        run: |
+          npm ci --prefix app
+          npm ci --prefix ui
+
+      - name: TypeScript
+        run: npx --no-install tsc -b --noEmit
+        working-directory: app
+
+      - name: Bauen
+        run: npx --no-install vite build
+        working-directory: app
+
+      - name: Einheitentests
+        run: |
+          node --test tests/einheiten.test.mjs
+          cd app && node --test src/logik.test.ts
+
+      - name: Rauchtest
+        run: tests/smoke.sh
+
+      # Der Bau muss eine einzige Datei sein, die zur Laufzeit nichts nachlädt.
+      # Die Seite hält das Sitzungs-Token und darf Claude mit Werkzeugzugriff
+      # steuern — da gehört kein fremdes Skript hinein.
+      - name: Bau ist in sich geschlossen
+        run: |
+          n=$(ls app/dist | wc -l | tr -d ' ')
+          [ "$n" = 1 ] || { echo "dist hat $n Dateien, erwartet: 1"; ls -la app/dist; exit 1; }
+          if grep -qE '<(script|link)[^>]+(src|href)="https?:' app/dist/index.html; then
+            echo "Der Bau lädt etwas von außen nach:"
+            grep -oE '<(script|link)[^>]+(src|href)="https?:[^"]*' app/dist/index.html
+            exit 1
+          fi
+
+  schale:
+    name: Desktop-Schale
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Abhängigkeiten
+        run: npm ci --prefix desktop
+
+      # Der frontendDist-Ordner muss existieren, sonst bricht tauri-build ab.
+      # Das Fenster lädt ohnehin den lokalen Server, nicht diese Datei.
+      - name: Rust prüfen
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: desktop/src-tauri
+
+      - name: Rust-Tests
+        run: cargo test
+        working-directory: desktop/src-tauri
+
+      - name: Formatierung
+        run: cargo fmt --check
+        working-directory: desktop/src-tauri

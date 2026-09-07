@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
-import { AKZENTE, GROESSEN, useEinstellungen } from '../store/einstellungen'
-import { useSitzung } from '../store/sitzung'
-import { useT } from '../lib/useT'
-import { Gruppe } from './ui/Gruppe'
-import { Auswahl, Feld, Haken, Regler, Textfeld, type Wahl } from './ui/Felder'
-import { useMeldungen } from './ui/Meldungen'
-import { audio } from '../lib/audio'
-import type { Backend, ModellInfo, Modus } from '../lib/types'
+import { api } from '../lib/api.ts'
+import { AKZENTE, GROESSEN, useEinstellungen } from '../store/einstellungen.ts'
+import { useSitzung } from '../store/sitzung.ts'
+import { useT } from '../lib/useT.ts'
+import { Gruppe } from './ui/Gruppe.tsx'
+import { Auswahl, Feld, Haken, Regler, Textfeld, type Wahl } from './ui/Felder.tsx'
+import { useMeldungen } from './ui/Meldungen.tsx'
+import { audio } from '../lib/audio.ts'
+import type { Backend, ModellInfo, Modus } from '../lib/types.ts'
 
 export const MODUS_NAME: Record<string, string> = {
   default: 'fragt nach', acceptEdits: 'Edits ohne Rückfrage', plan: 'nur planen',

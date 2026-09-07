@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Sprache } from '../lib/types'
+import type { Sprache } from '../lib/types.ts'
 
 export const AKZENTE = [
   { name: 'Indigo', hell: '#5b5bd6', dunkel: '#8b8bf0' },

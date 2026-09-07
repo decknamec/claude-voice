@@ -1,5 +1,5 @@
-import { EN } from './woerter'
-import type { Sprache } from './types'
+import { EN } from './woerter.ts'
+import type { Sprache } from './types.ts'
 
 /** Aus der Auswahl die Sprache der Oberfläche ableiten. Bei "automatisch
  *  erkennen" hängt die Antwortsprache am Gesprochenen — die Beschriftungen

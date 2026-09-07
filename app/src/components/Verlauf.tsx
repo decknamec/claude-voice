@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react'
 import clsx from 'clsx'
-import { useSitzung } from '../store/sitzung'
-import { useEinstellungen } from '../store/einstellungen'
-import { useT } from '../lib/useT'
-import { steuerung } from '../lib/steuerung'
-import { kurzArg } from '../lib/werkzeuge'
-import { useMeldungen } from './ui/Meldungen'
-import type { Blase, SpurZeile } from '../lib/types'
+import { useSitzung } from '../store/sitzung.ts'
+import { useEinstellungen } from '../store/einstellungen.ts'
+import { useT } from '../lib/useT.ts'
+import { steuerung } from '../lib/steuerung.ts'
+import { kurzArg } from '../lib/werkzeuge.ts'
+import { useMeldungen } from './ui/Meldungen.tsx'
+import type { Blase, SpurZeile } from '../lib/types.ts'
 
 function Nachricht ({ b }: { b: Blase }) {
   const { t } = useT()

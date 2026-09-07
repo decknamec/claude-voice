@@ -1,7 +1,7 @@
 import type {
   Backend, Befehl, GitLage, McpServer, ModellInfo, SitzungKurz,
   StatusBericht, Stats, VerlaufBlock
-} from './types'
+} from './types.ts'
 
 /** Das Token steht in der URL, aber in der Desktop-Schale putzen wir es dort
  *  weg — und ein Neuladen (Cmd-R) hätte danach keins mehr. Also einmal in den
